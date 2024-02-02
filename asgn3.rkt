@@ -2,15 +2,15 @@
 (require typed/rackunit)
 
 ;; Define the Arith language described in the textbook in chapter 3. Please feel free to copy code from the texbook.
-(define-type ArithC (U numC binopC))
+(define-type ExprC (U numC binopC))
 (struct numC
   ([n : Real]) #:transparent)
 (struct binopC
-  ([op : Symbol] [l : ArithC] [r : ArithC]) #:transparent)
+  ([op : Symbol] [l : ExprC] [r : ExprC]) #:transparent)
 
- 
+  
 ;; interpret is given an AST in the form of an ArithC and evaluates it to a Real number
-(define (interp [AST : ArithC]) : Real
+(define (interp [AST : ExprC]) : Real
   (match AST
     [(numC n) n]
     [ (binopC op l r)
@@ -32,7 +32,7 @@
   
 
 ;; parse is given concrete syntax in the form of an s-expression and parses it into an ArithC
-(define (parse [code : Sexp]) : ArithC
+(define (parse [code : Sexp]) : ExprC
   (match code
     [(? real? x) (numC x)]
     [(list '* l r) (binopC '* (parse l) (parse r))]
@@ -61,7 +61,7 @@
  
 
 ;; printer prints a given AST
-(define (printer [AST : ArithC]) : String
+(define (printer [AST : ExprC]) : String
   (match AST
     [(numC n) (format "~v" n)]
     [(binopC '+ l r) (string-append "PlusC: (" (printer l) "), (" (printer r) ")")]
