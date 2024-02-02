@@ -2,25 +2,66 @@
 (require typed/rackunit)
 
 ;; question for lab:
-; --> what should happend when the EXPN in the function defintion is an id?
-;;    '{func {addtwo x} : f}
+; --> is it better style to have all the test cases together at the bottom,
+;     or after each function they are testing?
 ;
+; --> what should happend when the EXPN in the function defintion is an id?
+;     '{func {addtwo x} : f}
 ;     (just an function name, not a function call)
-;     is that a syntax error (parser) or runtime error (interp)
+;     syntax (parser) or runtime (interp)? i think runtime
+;     currently have it as a runtime error in subst because it's not a valid argument
+;
+; --> what about having the input of a function application be a symbol?
+;     '{f1 f2}
+;     syntax (parser) or runtime (interp)?
+;     currently have it as a runtime error in interp (tried to evaluate symbol)
 ;    
 ; --> what about a function call on a function that doesn't exist?
-;     my guess is runtime but not sure
+;     syntax (parser) or runtime (interp)? i think runtime
+;     currently have it as a runtime error in find-func
 ;
 ; --> function with argument symbol different from symbol used in body? ex. '{func {addtwo y} : {+ x 2}}
-;     syntax (parser) or runtime (interp). I think parser but idk
+;     syntax (parser) or runtime (interp)? i think runtime
+;     currently have it as a runtime error in subst
 ;
 ; --> function with the same symbol for the name and the argument? ex. '{func {x x} : {+ x 2}}
-;     syntax (parser) or runtime (interp). I think parser but idk
+;     syntax (parser) or runtime (interp)? No Error!
+;     no test case yet
+;     namespace
+;     Actually will be fine. Write a test that works that has this sort of function.
+;
+; --> user writes a recursive function? function that calls itself will run forever. Syntax or runtime error?
+;     this can work because of the ifleq0 conditional.
+;     write test case with recursion using ifleq0
+;     but if user defines infinite recursive function, we won't be able to catch it?
+;     write a test case for this
 ;
 ; --> two FundefC's with the same id?
-;     syntax (parser) or runtime (interp). I think parser but idk
+;     syntax (parser) or runtime (interp)?
+;     no test case yet
+;
+; --> no main function given in program
+;     syntax (parser) or runtime (interp)?
+;     no test case yet
+;
+; --> main function argument is not called 'init
+;     syntax (parser) or runtime (interp)?
+;     no test case yet
+;
+;
+; not a question just to do:
+; write interp-fns test cases (don't need to many, can test top-interp hard)
+; implement interp-fns
+; define parse-prog
+; write parse-prog test cases (don't need to many, can test top-interp hard)
+; implement parse-prog
+; define top-interp
+; test the shit out of top-interp
+; write out top-interp
 ;
 ; change name of id in FundefC structure to ... name.
+; list of arguments instead of 1 argument?
+; put all test cases at bottom
 
 
 ;;; ExprC is either:
@@ -56,9 +97,10 @@
 (define func7 (FundefC (idC 'plus8) (idC 'y) (plusC (idC 'y) (FunappC (idC 'plus4) (numC 4)))))
 (define func8 (FundefC (idC 'lottamath) (idC 'x) (multC (multC (idC 'x) (plusC (idC 'x) (numC 14))) (plusC (idC 'x) (numC 4)))))
 (define func9 (FundefC (idC 'returninput) (idC 'w) (idC 'w)))
-(define func10 (FundefC (idC 'invalid) (idC 'w) (idC 'f)))
+(define func10 (FundefC (idC 'invalid) (idC 'w) (idC 'six)))
 (define func11 (FundefC (idC 'f3) (idC 'xxx) (multC (idC 'xxx) (numC 0.5))))
 (define func12 (FundefC (idC 'wackyfunc) (idC 'x) (FunappC (idC 'plus4) (multC (FunappC (idC 'f3) (numC 60)) (plusC (idC 'x) (numC 9))))))
+;(define fu)
 
 
 
@@ -137,7 +179,16 @@
 
 ;;;; ---- INTERPRETING
 
-;; interp is given an AST in the form of an ArithC and evaluates it to a Real number adskfjds;lkjfakldsjf
+;; interp-fns is given a list of FundefCs, and iterates through the list until
+;; it finds the function name 'main , which it then evaluates. If no function
+;; named 'main is found, raises an error
+#;(define (interp-fns [funs : (Listof FundefC)]) : Real
+  0)
+
+
+
+;; interp is given an ExprC and a list of FundefCs,
+;; and evaluates the given expression using the function definitions
 (define (interp [exp : ExprC] [funs : (Listof FundefC)]) : Real
   (match exp
     [(numC n) n]
@@ -197,11 +248,15 @@
 (check-equal? (interp (FunappC (idC 'lottamath) complicated-argument) (cons func6 (cons func7 (cons func8 '())))) 576)
 (check-equal? (interp (FunappC (idC 'wackyfunc) (numC 3)) (cons func12 (cons func11 (cons func6 '())))) 364.0)
 (check-equal? (interp (FunappC (idC 'wackyfunc) complicated-argument) (cons func12 (cons func11 (cons func6 (cons func7 (cons func8 '())))))) 394.0)
+(check-equal? (interp (FunappC (idC 'returninput) (numC 6)) (cons func6 (cons func7 (cons func8 (cons func9 '()))))) 6)
 (check-exn #rx"OAZO runtime error in find-func"
            (lambda () (interp (FunappC (idC 'wackyfunc) complicated-argument)
                               (cons func12 (cons func11 (cons func6 '()))))))
+; checks for passing an idC in for a function input
 (check-exn #rx"OAZO runtime error in interp"
            (lambda () (interp (FunappC (idC 'plus4) (idC 'plus4)) (cons func6 '()))))
+(check-exn #rx"OAZO runtime error in subst"
+           (lambda () (interp (FunappC (idC 'invalid) (numC 6)) (cons func10 (cons func1 '())))))
 
 
 ; interp-func tests
@@ -214,7 +269,7 @@
 (check-exn #rx"OAZO runtime error in interp"
            (lambda () (interp-func func7 (idC 'x) (cons func6 (cons func7 (cons func8 '()))))))
 (check-exn #rx"OAZO runtime error in subst"
-           (lambda () (interp-func func10 (numC 204) (cons func10 (cons func7 (cons func8 (cons func9 '())))))))
+           (lambda () (interp-func func10 (numC 204) (cons func10 (cons func7 (cons func8 (cons func1 '())))))))
 
 
 ; find-func tests
