@@ -72,7 +72,7 @@
 
 ;;; ExprC is either:
 ;;; - one of the following arithmatic expressions: plus, subtract, multiply, divide
-;;;       which are represented by their symbols (+, -, *, /)
+;;;       which are represented by their symbols (+, -, *, /) --------------------------- Change def
 ;;; - an id, represented as a symbol
 ;;; - a function application, represented by an id and an ExprC.
 ;;;       The id corresponds to the name of the function, and
@@ -114,11 +114,10 @@
 
 ;;;; ---- PARSING ----
 
-;; parse is given concrete syntax in the form of an s-expression and parses it into an ExprC
-(define (parse [s : Sexp]) : ExprC
-  (match s
+;; parse is given concrete syntax in the form of an s-expression and parses it into an ArithC
+(define (parse [code : Sexp]) : ExprC
+  (match code
     [(? real? x) (numC x)]
-    [(? symbol? symb) (idC symb)]
     [(list '* l r) (binopC '* (parse l) (parse r))]
     [(list '+ l r) (binopC '+ (parse l) (parse r))]
     [(list '- l r) (binopC '- (parse l) (parse r))]
@@ -126,9 +125,7 @@
     [(list name expr) (FunappC (parse-id name) (parse expr))]
     ; what if try to parse an idC by itself?
     [other (error 'parse "OAZO syntax error in parse: expected valid syntax, got ~e" other)]))
-
-
-
+    
 
 ;; parse-id is given a symbol and returns an idC
 (define (parse-id [s : Sexp]) : idC
@@ -174,6 +171,7 @@
 (check-equal? (parse '{/ 12 4})
               (binopC '/ (numC 12) (numC 4)))
 (check-exn #rx"syntax" (lambda () (parse '{1 2 3})))
+ 
 
 
 ; parse-id tests
@@ -226,11 +224,6 @@
        ['/ (/ (interp l funs) (interp r funs))])]
     [ (FunappC name arg1) (interp-func (find-func name funs) arg1 funs)] 
     [(idC s) (error 'interp "OAZO runtime error in interp: invalid expression, tried to evaluate sumbol ~e" exp)]))
-
-
-    
-; interpret tests
-
 
 
 ;; interp-func is given a FundefC and an ExprC, as well as a list of functions, and evaluates the FundefC by:
@@ -302,6 +295,9 @@
               200)
 
 
+
+
+
 ; interp-func tests
 (check-equal? (interp-func func6 (numC 6) (cons func6 '())) 10)
 (check-equal? (interp-func func8 (numC 3) (cons func6 (cons func7 (cons func8 '())))) 357)
@@ -339,8 +335,20 @@
 
 
 
-          
+;; printer prints a given AST
+(define (printer [AST : ExprC]) : String
+  (match AST
+    [(numC n) (format "~v" n)]
+    [(binopC '+ l r) (string-append "PlusC: (" (printer l) "), (" (printer r) ")")]
+    [(binopC '* l r) (string-append "MultC: (" (printer l) "), (" (printer r) ")")]))
 
+; printer tests
+(check-equal? (printer (numC 4)) "4")
+(check-equal? (printer (binopC '* (binopC '+ (numC 2) (numC 3))
+                              (binopC '* (numC 10) (numC 4))))
+              "MultC: (PlusC: (2), (3)), (MultC: (10), (4))")
+              
+          
 
 ;; top-interp accepts an s-expression, calls parse with the s-expression,
 ;; then interprets the results of the parser with interp
@@ -360,8 +368,6 @@
               2)
 (check-exn #rx"OAZO runtime error in find-func" (lambda () (top-interp '{* 7})))
 (check-exn #rx"OAZO syntax error in parse: expected valid syntax" (lambda () (top-interp '{^ 2 4})))
-
-
 
 
 
