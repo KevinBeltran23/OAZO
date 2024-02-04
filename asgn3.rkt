@@ -1,6 +1,5 @@
 #lang typed/racket
 (require typed/rackunit)
-  
 ; errors to test for
 ;
 ; --> what should happend when the EXPN in the function defintion is an id?
@@ -22,25 +21,14 @@
 ;     runtime
 ;     write a test in top-interp, should fail in subst
 ;
-; --> user writes a recursive function? function that calls itself will run forever. Syntax or runtime error?
-;     user can define infinite recursive function, but we won't be able to catch it
-;     write a test case for this just to see what happens
-;
-;     but, user can write valid recursive function using the ifleq0 conditional.
-;     write test case with recursion using ifleq0
 ;
 ;
 ; 
 ; not errors just to do:
 ;
-; test the shit out of top-interp
-; write out top-interp
-;
 ; change name of id in FundefC structure to ... name.
 ; list of arguments instead of 1 argument?
-; put all test cases at bottom
 ;
-; write the big test case (the function he described)
 
 
 
@@ -71,6 +59,8 @@
 (struct FundefC ([id : idC] [arg1 : idC] [body : ExprC]) #:transparent)
 
 
+
+
 ;;;; ---- TOP-INTERP ----
 
 
@@ -80,13 +70,17 @@
   (interp-fns (parse-prog fun-sexps)))
 
 
+
+
 ;;;; ---- PARSING ----
+
 
 ;; parse-prog is given concrete syntax in the form of an s-expression and parses it into list of FundefCs.
 (define (parse-prog [s : Sexp]) : (Listof FundefC)
   (match s
   [(cons f r) (cons (parse-fundef f) (parse-prog r))]
   ['() '()]))
+
 
 ;; EXPR types cannot be used as function names
 (define (reserved-name? name)
@@ -98,7 +92,8 @@
       (equal? 'ifleq0? name)
       (equal? ': name)
       (equal? 'else name)))
- 
+
+
 ;; parse-fundef is given contrece syntax of a function definition in the form of an s-expression
 ;; and parses it into a funC
 (define (parse-fundef [s : Sexp]) : FundefC
@@ -134,7 +129,10 @@
     [other (error 'parse-id "OAZO syntax error in parse-id: expected valid id, got ~e" other)]))
 
 
+
+
 ;;;; ---- INTERPRETING
+
 
 ;; interp-fns is given a list of FundefCs, and iterates through the list until it finds the function name 'main 
 ;; which it then evaluates. If no function named 'main is found, raises an error
@@ -212,8 +210,8 @@
 
 
 
- 
 ;;;; ---- TESTS ----
+
 
 ;; objects for testing
 (define func1 (FundefC (idC 'six) (idC 'x) (binopC '+ (numC 2) (numC 4))))
@@ -263,22 +261,21 @@
                       {ifleq0? {- x 0.5} x {reduce {- x 1}}}}
                 {func {main init} : {round 2.7}}
                 })
- 
-;; one big test case
-;; prog7 and prog8 are the same code but with a different main
-;; I wrote a function that recursively rounds to the nearest number
-(check-equal? (top-interp
-               prog7) 12.0)
-(check-equal? (top-interp
-               prog8) 3.0)
- 
-  
+(define prog9 '{{func {main init} : {recurs 7}}
+                {func {recurs x} : {ifleq0? x 99 {recurs {- x 1}}}}})
+
+
 ; top-interp tests
 (check-equal? (top-interp prog1) 4)
 (check-equal? (top-interp prog2) 21)
 (check-equal? (top-interp prog3) 85)
 (check-equal? (top-interp prog4) 34)
 (check-equal? (top-interp prog5) 5)
+(check-equal? (top-interp
+               prog7) 12.0)
+(check-equal? (top-interp
+               prog8) 3.0)
+(check-equal? (top-interp prog9) 99)
 (check-exn #rx"OAZO syntax error in parse-fundef: invalid function name" (lambda () (top-interp prog6)))
 (check-exn #rx"OAZO runtime error in interp-fns-iterater" (lambda () (top-interp '{})))
 ; tests from previous top-interp:
@@ -308,8 +305,6 @@
 (check-exn #rx"OAZO syntax error in parse-fundef" (lambda () (parse-fundef '{fun {addtwo x} : {+ x 2}})))
 (check-exn #rx"OAZO syntax error in parse-fundef" (lambda () (parse-fundef '{func {addtwo} : {+ x 2}})))
 (check-exn #rx"OAZO syntax error in parse-fundef" (lambda () (parse-fundef '{func {addtwo x y} : {+ x 2}})))
-#;(check-exn #rx"OAZO syntax error in parse-fundef" (lambda () (parse-fundef '{func {addtwo y} : {+ x 2}})))
-#;(check-exn #rx"OAZO syntax error in parse-fundef" (lambda () (parse-fundef '{func {x x} : {+ x 2}})))
 
 
 ; parse tests
