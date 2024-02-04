@@ -1,6 +1,6 @@
 #lang typed/racket
 (require typed/rackunit)
- 
+  
 ; errors to test for
 ;
 ; --> what should happend when the EXPN in the function defintion is an id?
@@ -40,8 +40,6 @@
 ; list of arguments instead of 1 argument?
 ; put all test cases at bottom
 ;
-; edit parse so that function name cannot be +, - , *, /, fun, ifleq0?, :, or else:
-;
 ; write the big test case (the function he described)
 
 
@@ -73,10 +71,6 @@
 (struct FundefC ([id : idC] [arg1 : idC] [body : ExprC]) #:transparent)
 
 
-
-
-
-
 ;;;; ---- TOP-INTERP ----
 
 
@@ -84,10 +78,6 @@
 ;; then interprets the results of parse-prog with interp-fns
 (define (top-interp [fun-sexps : Sexp]) : Real
   (interp-fns (parse-prog fun-sexps)))
-
-
-
-
 
 
 ;;;; ---- PARSING ----
@@ -119,7 +109,7 @@
         (error 'parse-fundef "OAZO syntax error in parse-fundef: invalid function name, got ~e" name-expr)]
        [else (FundefC (parse-id name-expr) (parse-id arg1-expr) (parse body-expr))])]
     [other (error 'parse-fundef "OAZO syntax error in parse-fundef: expected valid syntax, got ~e" other)]))
-
+ 
 
 ;; parse is given concrete syntax in the form of an s-expression and parses it into an ExprC
 (define (parse [s : Sexp]) : ExprC
@@ -142,10 +132,6 @@
   (match s
     [(? symbol? s) (idC s)]
     [other (error 'parse-id "OAZO syntax error in parse-id: expected valid id, got ~e" other)]))
-
-
-
-
 
 
 ;;;; ---- INTERPRETING
@@ -175,7 +161,7 @@
   (match fun
     [(FundefC n a b) (interp (subst n b (interp arg1 funs) a) funs)]))
 
-
+ 
 ;; interp is given an ExprC and a list of FundefCs,
 ;; and evaluates the given expression using the function definitions
 (define (interp [exp : ExprC] [funs : (Listof FundefC)]) : Real
@@ -194,7 +180,7 @@
          [else (interp else-expr funs)])]
     [(idC s) (error 'interp "OAZO runtime error in interp: invalid expression, tried to evaluate sumbol ~e" exp)]))
 
-
+ 
 ;; find-func is given a function name and a list of functions,
 ;; and returns the function within the given list that corresponds to the given name.
 ;; if no such function exists, raise an error
@@ -228,7 +214,6 @@
 
  
 ;;;; ---- TESTS ----
-
 
 ;; objects for testing
 (define func1 (FundefC (idC 'six) (idC 'x) (binopC '+ (numC 2) (numC 4))))
@@ -266,7 +251,36 @@
                 {func {+ x} : {+ x 4}}
                 {func {main init} : {plus4 init}}
                 {func {plus4 x} : {+ x 4}}})
+(define prog7 '{{func {round x} :
+                      {ifleq0? {- {reduce x} 0.5} {- x {reduce x}} {+ x {reduce x}}}}
+                {func {reduce x} :
+                      {ifleq0? {- x 0.5} x {reduce {- x 1}}}}
+                {func {main init} : {round 12.2}}
+                })
+(define prog8 '{{func {round x} :
+                      {ifleq0? {- {reduce x} 0.5} {- x {reduce x}} {+ x {reduce x}}}}
+                {func {reduce x} :
+                      {ifleq0? {- x 0.5} x {reduce {- x 1}}}}
+                {func {main init} : {round 2.7}}
+                })
  
+;(func (round [num : Real] : Real
+;             (ifleq0? (- num 0.5) 
+;                      (+ num 0.5)
+;                      (round (if (< num 0) (+ num 1) (- num 1)))))
+                      
+;(func (main [] : Real
+;            (round 12.7)))
+
+;; one big test case
+;; prog7 and prog8 are the same code but with a different main
+;; I wrote a function that recursively rounds to the nearest number
+(check-equal? (top-interp
+               prog7) 12.0)
+(check-equal? (top-interp
+               prog8) 3.0)
+ 
+  
 ; top-interp tests
 (check-equal? (top-interp prog1) 4)
 (check-equal? (top-interp prog2) 21)
