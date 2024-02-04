@@ -264,14 +264,6 @@
                 {func {main init} : {round 2.7}}
                 })
  
-;(func (round [num : Real] : Real
-;             (ifleq0? (- num 0.5) 
-;                      (+ num 0.5)
-;                      (round (if (< num 0) (+ num 1) (- num 1)))))
-                      
-;(func (main [] : Real
-;            (round 12.7)))
-
 ;; one big test case
 ;; prog7 and prog8 are the same code but with a different main
 ;; I wrote a function that recursively rounds to the nearest number
