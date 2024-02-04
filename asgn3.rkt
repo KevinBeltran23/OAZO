@@ -1,6 +1,6 @@
 #lang typed/racket
 (require typed/rackunit)
-
+ 
 ; errors to test for
 ;
 ; --> what should happend when the EXPN in the function defintion is an id?
@@ -30,7 +30,7 @@
 ;     write test case with recursion using ifleq0
 ;
 ;
-;
+; 
 ; not errors just to do:
 ;
 ; test the shit out of top-interp
@@ -57,12 +57,13 @@
 ;;;       The id corresponds to the name of the function, and
 ;;;       the ExprC corresponds to the expression being 
 ;;;       passed into the function as the argument
-(define-type ExprC (U numC binopC idC FunappC))
+(define-type ExprC (U numC binopC idC FunappC ifleq0?))
 (struct numC ([n : Real]) #:transparent)
 (struct binopC
   ([op : Symbol] [l : ExprC] [r : ExprC]) #:transparent)
 (struct idC ([s : Symbol]) #:transparent)
 (struct FunappC ([id : idC] [arg1 : ExprC]) #:transparent)
+(struct ifleq0? ([test-expr : ExprC] [then-expr : ExprC] [else-expr : ExprC]) #:transparent)
 
 
 ;;; FunDefC is a function defintion, represented by:
@@ -97,12 +98,26 @@
   [(cons f r) (cons (parse-fundef f) (parse-prog r))]
   ['() '()]))
 
-
+;; EXPR types cannot be used as function names
+(define (reserved-name? name)
+  (or (equal? '+ name)
+      (equal? '- name)
+      (equal? '* name)
+      (equal? '/ name)
+      (equal? 'fun name)
+      (equal? 'ifleq0? name)
+      (equal? ': name)
+      (equal? 'else name)))
+ 
 ;; parse-fundef is given contrece syntax of a function definition in the form of an s-expression
 ;; and parses it into a funC
 (define (parse-fundef [s : Sexp]) : FundefC
   (match s
-    [(list 'func (list name-expr arg1-expr) ': body-expr) (FundefC (parse-id name-expr) (parse-id arg1-expr) (parse body-expr))]
+    [(list 'func (list name-expr arg1-expr) ': body-expr)
+     (cond
+       [(reserved-name? name-expr)
+        (error 'parse-fundef "OAZO syntax error in parse-fundef: invalid function name, got ~e" name-expr)]
+       [else (FundefC (parse-id name-expr) (parse-id arg1-expr) (parse body-expr))])]
     [other (error 'parse-fundef "OAZO syntax error in parse-fundef: expected valid syntax, got ~e" other)]))
 
 
@@ -116,10 +131,12 @@
     [(list '- l r) (binopC '- (parse l) (parse r))]
     [(list '/ l r) (binopC '/ (parse l) (parse r))]
     [(list name expr) (FunappC (parse-id name) (parse expr))]
+    [(list 'ifleq0? test-expr then-expr else-expr)
+     (ifleq0? (parse test-expr) (parse then-expr) (parse else-expr))]
     ; what if try to parse an idC by itself?
     [other (error 'parse "OAZO syntax error in parse: expected valid syntax, got ~e" other)]))
 
-
+ 
 ;; parse-id is given a symbol and returns an idC
 (define (parse-id [s : Sexp]) : idC
   (match s
@@ -170,7 +187,11 @@
        ['* (* (interp l funs) (interp r funs))]
        ['- (- (interp l funs) (interp r funs))]
        ['/ (/ (interp l funs) (interp r funs))])]
-    [ (FunappC name arg1) (interp-func (find-func name funs) arg1 funs)] 
+    [ (FunappC name arg1) (interp-func (find-func name funs) arg1 funs)]
+    [(ifleq0? test-expr then-expr else-expr)
+     (cond 
+         [(<= (interp test-expr funs) 0) (interp then-expr funs)]
+         [else (interp else-expr funs)])]
     [(idC s) (error 'interp "OAZO runtime error in interp: invalid expression, tried to evaluate sumbol ~e" exp)]))
 
 
@@ -197,13 +218,15 @@
     [(binopC '* left-expr right-expr) (binopC '* (subst name left-expr numb var) (subst name right-expr numb var))]
     [(binopC '- left-expr right-expr) (binopC '- (subst name left-expr numb var) (subst name right-expr numb var))]
     [(binopC '/ left-expr right-expr) (binopC '/ (subst name left-expr numb var) (subst name right-expr numb var))]
-    [(FunappC app-name app-arg) (FunappC app-name (subst name app-arg numb var))]))
+    [(FunappC app-name app-arg) (FunappC app-name (subst name app-arg numb var))]
+    [(ifleq0? if-expr then-expr else-expr)
+     (ifleq0? (subst name if-expr numb var) (subst name then-expr numb var) (subst name else-expr numb var))]))
 
 
 
 
 
-
+ 
 ;;;; ---- TESTS ----
 
 
@@ -238,13 +261,22 @@
                 {func {main init} : {w 5}}})
 (define prog4 '{{func {w w} : {* 17 w}}
                 {func {main joe} : {w {+ 2 joe}}}})
-
-
+(define prog5 '{{func {main init} : {ifleq0? 5 {+ 10 5} {- 8 3}}}})
+(define prog6 '{{func {six x} : {+ 2 4}}
+                {func {+ x} : {+ x 4}}
+                {func {main init} : {plus4 init}}
+                {func {plus4 x} : {+ x 4}}})
+(define prog7 '{{func {main init} : {recurs 7}}
+                {func {recurs x} : {ifleq0? x 99 {recurs {- x 1}}}}})
+ 
 ; top-interp tests
 (check-equal? (top-interp prog1) 4)
 (check-equal? (top-interp prog2) 21)
 (check-equal? (top-interp prog3) 85)
 (check-equal? (top-interp prog4) 34)
+(check-equal? (top-interp prog5) 5)
+(check-equal? (top-interp prog7) 99)
+(check-exn #rx"OAZO syntax error in parse-fundef: invalid function name" (lambda () (top-interp prog6)))
 (check-exn #rx"OAZO runtime error in interp-fns-iterater" (lambda () (top-interp '{})))
 ; tests from previous top-interp:
 ; (check-exn #rx"OAZO runtime error in find-func" (lambda () (top-interp '{* 7})))
@@ -273,8 +305,6 @@
 (check-exn #rx"OAZO syntax error in parse-fundef" (lambda () (parse-fundef '{fun {addtwo x} : {+ x 2}})))
 (check-exn #rx"OAZO syntax error in parse-fundef" (lambda () (parse-fundef '{func {addtwo} : {+ x 2}})))
 (check-exn #rx"OAZO syntax error in parse-fundef" (lambda () (parse-fundef '{func {addtwo x y} : {+ x 2}})))
-#;(check-exn #rx"OAZO syntax error in parse-fundef" (lambda () (parse-fundef '{func {addtwo y} : {+ x 2}})))
-#;(check-exn #rx"OAZO syntax error in parse-fundef" (lambda () (parse-fundef '{func {x x} : {+ x 2}})))
 
 
 ; parse tests
@@ -328,7 +358,7 @@
            (lambda () (interp-func func7 (idC 'x) (cons func6 (cons func7 (cons func8 '()))))))
 (check-exn #rx"OAZO runtime error in subst"
            (lambda () (interp-func func10 (numC 204) (cons func10 (cons func7 (cons func8 (cons func1 '())))))))
-
+ 
 
 ; interp-fns test
 (check-equal? (interp-fns (cons func6 (cons func13 '()))) 11)
@@ -340,9 +370,11 @@
 (check-equal? (interp-fns (cons func2 (cons func17 '()))) 0)
 (check-exn #rx"OAZO runtime error in interp-fns-iterater"
            (lambda () (interp-fns (cons func7 (cons func6 (cons func8 (cons func9 (cons func2 (cons func1 '())))))))))
-
+ 
 
 ; interp tests
+(check-equal? (interp (ifleq0? (numC 0) (numC 5) (numC 10)) '()) 5)
+(check-equal? (interp (ifleq0? (binopC '+ (numC -5) (numC 7)) (numC 12) (numC 13)) '()) 13)
 (check-equal? (interp (numC 4) '()) 4)
 (check-equal? (interp (binopC '+ (numC 2) (numC 6)) '()) 8)
 (check-equal? (interp (binopC '* (numC 2) (numC 6)) '()) 12)
@@ -394,3 +426,5 @@
 (check-equal? (subst (idC 'test2) subst-expr3 15 (idC 'wango)) subst-expr4)
 (check-equal? (subst (idC 'test3) subst-expr5 -6 (idC 'x)) subst-expr6)
 (check-exn #rx"OAZO runtime error in subst" (lambda () (subst (idC 'test4) subst-expr3 15 (idC 'x))))
+
+
