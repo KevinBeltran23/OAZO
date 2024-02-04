@@ -1,6 +1,5 @@
 #lang typed/racket
 (require typed/rackunit)
- 
 ; errors to test for
 ;
 ; --> what should happend when the EXPN in the function defintion is an id?
@@ -22,27 +21,14 @@
 ;     runtime
 ;     write a test in top-interp, should fail in subst
 ;
-; --> user writes a recursive function? function that calls itself will run forever. Syntax or runtime error?
-;     user can define infinite recursive function, but we won't be able to catch it
-;     write a test case for this just to see what happens
-;
-;     but, user can write valid recursive function using the ifleq0 conditional.
-;     write test case with recursion using ifleq0
 ;
 ;
 ; 
 ; not errors just to do:
 ;
-; test the shit out of top-interp
-; write out top-interp
-;
 ; change name of id in FundefC structure to ... name.
 ; list of arguments instead of 1 argument?
-; put all test cases at bottom
 ;
-; edit parse so that function name cannot be +, - , *, /, fun, ifleq0?, :, or else:
-;
-; write the big test case (the function he described)
 
 
 
@@ -75,8 +61,6 @@
 
 
 
-
-
 ;;;; ---- TOP-INTERP ----
 
 
@@ -88,15 +72,15 @@
 
 
 
-
-
 ;;;; ---- PARSING ----
+
 
 ;; parse-prog is given concrete syntax in the form of an s-expression and parses it into list of FundefCs.
 (define (parse-prog [s : Sexp]) : (Listof FundefC)
   (match s
   [(cons f r) (cons (parse-fundef f) (parse-prog r))]
   ['() '()]))
+
 
 ;; EXPR types cannot be used as function names
 (define (reserved-name? name)
@@ -108,7 +92,8 @@
       (equal? 'ifleq0? name)
       (equal? ': name)
       (equal? 'else name)))
- 
+
+
 ;; parse-fundef is given contrece syntax of a function definition in the form of an s-expression
 ;; and parses it into a funC
 (define (parse-fundef [s : Sexp]) : FundefC
@@ -119,7 +104,7 @@
         (error 'parse-fundef "OAZO syntax error in parse-fundef: invalid function name, got ~e" name-expr)]
        [else (FundefC (parse-id name-expr) (parse-id arg1-expr) (parse body-expr))])]
     [other (error 'parse-fundef "OAZO syntax error in parse-fundef: expected valid syntax, got ~e" other)]))
-
+ 
 
 ;; parse is given concrete syntax in the form of an s-expression and parses it into an ExprC
 (define (parse [s : Sexp]) : ExprC
@@ -146,9 +131,8 @@
 
 
 
-
-
 ;;;; ---- INTERPRETING
+
 
 ;; interp-fns is given a list of FundefCs, and iterates through the list until it finds the function name 'main 
 ;; which it then evaluates. If no function named 'main is found, raises an error
@@ -175,7 +159,7 @@
   (match fun
     [(FundefC n a b) (interp (subst n b (interp arg1 funs) a) funs)]))
 
-
+ 
 ;; interp is given an ExprC and a list of FundefCs,
 ;; and evaluates the given expression using the function definitions
 (define (interp [exp : ExprC] [funs : (Listof FundefC)]) : Real
@@ -194,7 +178,7 @@
          [else (interp else-expr funs)])]
     [(idC s) (error 'interp "OAZO runtime error in interp: invalid expression, tried to evaluate sumbol ~e" exp)]))
 
-
+ 
 ;; find-func is given a function name and a list of functions,
 ;; and returns the function within the given list that corresponds to the given name.
 ;; if no such function exists, raise an error
@@ -226,7 +210,6 @@
 
 
 
- 
 ;;;; ---- TESTS ----
 
 
@@ -266,16 +249,33 @@
                 {func {+ x} : {+ x 4}}
                 {func {main init} : {plus4 init}}
                 {func {plus4 x} : {+ x 4}}})
-(define prog7 '{{func {main init} : {recurs 7}}
+(define prog7 '{{func {round x} :
+                      {ifleq0? {- {reduce x} 0.5} {- x {reduce x}} {+ x {reduce x}}}}
+                {func {reduce x} :
+                      {ifleq0? {- x 0.5} x {reduce {- x 1}}}}
+                {func {main init} : {round 12.2}}
+                })
+(define prog8 '{{func {round x} :
+                      {ifleq0? {- {reduce x} 0.5} {- x {reduce x}} {+ x {reduce x}}}}
+                {func {reduce x} :
+                      {ifleq0? {- x 0.5} x {reduce {- x 1}}}}
+                {func {main init} : {round 2.7}}
+                })
+(define prog9 '{{func {main init} : {recurs 7}}
                 {func {recurs x} : {ifleq0? x 99 {recurs {- x 1}}}}})
- 
+
+
 ; top-interp tests
 (check-equal? (top-interp prog1) 4)
 (check-equal? (top-interp prog2) 21)
 (check-equal? (top-interp prog3) 85)
 (check-equal? (top-interp prog4) 34)
 (check-equal? (top-interp prog5) 5)
-(check-equal? (top-interp prog7) 99)
+(check-equal? (top-interp
+               prog7) 12.0)
+(check-equal? (top-interp
+               prog8) 3.0)
+(check-equal? (top-interp prog9) 99)
 (check-exn #rx"OAZO syntax error in parse-fundef: invalid function name" (lambda () (top-interp prog6)))
 (check-exn #rx"OAZO runtime error in interp-fns-iterater" (lambda () (top-interp '{})))
 ; tests from previous top-interp:
@@ -426,5 +426,3 @@
 (check-equal? (subst (idC 'test2) subst-expr3 15 (idC 'wango)) subst-expr4)
 (check-equal? (subst (idC 'test3) subst-expr5 -6 (idC 'x)) subst-expr6)
 (check-exn #rx"OAZO runtime error in subst" (lambda () (subst (idC 'test4) subst-expr3 15 (idC 'x))))
-
-
