@@ -1,35 +1,10 @@
 #lang typed/racket
 (require typed/rackunit)
-; errors to test for
-;
-; --> what should happend when the EXPN in the function defintion is an id?
-;     '{func {addtwo x} : f}
-;     (just an function name, not a function call)
-;     runtime
-;     write a test in top-interp, should fail in subst
-;
-; --> what about having the input of a function application be a symbol?
-;     '{f1 f2}
-;     runtime
-;     write a test in top-interp, should fail in interp
-;    
-; --> what about a function call on a function that doesn't exist?
-;     runtime
-;     write a test in top-interp, should fail in find-func
-;
-; --> function with argument symbol different from symbol used in body? ex. '{func {addtwo y} : {+ x 2}}
-;     runtime
-;     write a test in top-interp, should fail in subst
-;
-;
-;
-; 
-; not errors just to do:
-;
-; change name of id in FundefC structure to ... name.
-; list of arguments instead of 1 argument?
-;
 
+
+;; Assignment 3
+;; Full project implemented
+  
 
 
 ;;;; ---- TYPE DEFINITIONS ----
@@ -56,7 +31,7 @@
 ;;; an idC, corresponding to the name of the function
 ;;; an idC, corresponding to the argument of the function
 ;;; and an ExprC, corresponding to the function body
-(struct FundefC ([id : idC] [arg1 : idC] [body : ExprC]) #:transparent)
+(struct FundefC ([name : idC] [arg1 : idC] [body : ExprC]) #:transparent)
 
 
 
@@ -90,8 +65,7 @@
       (equal? '/ name)
       (equal? 'fun name)
       (equal? 'ifleq0? name)
-      (equal? ': name)
-      (equal? 'else name)))
+      (equal? ': name)))
 
 
 ;; parse-fundef is given contrece syntax of a function definition in the form of an s-expression
@@ -118,7 +92,6 @@
     [(list name expr) (FunappC (parse-id name) (parse expr))]
     [(list 'ifleq0? test-expr then-expr else-expr)
      (ifleq0? (parse test-expr) (parse then-expr) (parse else-expr))]
-    ; what if try to parse an idC by itself?
     [other (error 'parse "OAZO syntax error in parse: expected valid syntax, got ~e" other)]))
 
  
@@ -263,24 +236,39 @@
                 })
 (define prog9 '{{func {main init} : {recurs 7}}
                 {func {recurs x} : {ifleq0? x 99 {recurs {- x 1}}}}})
+(define prog10 '{{func {: x} : {+ 3 x}}
+                 {func {main init} : {: 7}}})
+(define prog11 '{{func {f x} : {+ 3 x}}
+                 {func {main init} : f}})
+(define prog12 '{{func {f x} : {+ 3 x}}
+                 {func {main init} : {f}}})
+(define prog13 '{{func {f1 x} : {+ 3 x}}
+                 {func {f2 x} : {+ 4 x}}
+                 {func {main init} : {f1 f2}}})
+(define prog14 '{{func {f1 x} : {+ 3 x}}
+                 {func {f2 x} : {+ 4 x}}
+                 {func {main init} : {f3 5}}})
+(define prog15 '{{func {f1 x} : {+ 3 y}}
+                 {func {main init} : {f1 5}}})
 
-
+  
 ; top-interp tests
 (check-equal? (top-interp prog1) 4)
 (check-equal? (top-interp prog2) 21)
 (check-equal? (top-interp prog3) 85)
 (check-equal? (top-interp prog4) 34)
 (check-equal? (top-interp prog5) 5)
-(check-equal? (top-interp
-               prog7) 12.0)
-(check-equal? (top-interp
-               prog8) 3.0)
+(check-equal? (top-interp prog7) 12.0)
+(check-equal? (top-interp prog8) 3.0)
 (check-equal? (top-interp prog9) 99)
 (check-exn #rx"OAZO syntax error in parse-fundef: invalid function name" (lambda () (top-interp prog6)))
 (check-exn #rx"OAZO runtime error in interp-fns-iterater" (lambda () (top-interp '{})))
-; tests from previous top-interp:
-; (check-exn #rx"OAZO runtime error in find-func" (lambda () (top-interp '{* 7})))
-; (check-exn #rx"OAZO syntax error in parse: expected valid syntax" (lambda () (top-interp '{^ 2 4}))))
+(check-exn #rx"OAZO syntax error in parse-fundef: invalid function name" (lambda () (top-interp prog10)))
+(check-exn #rx"OAZO runtime error in subst" (lambda () (top-interp prog11)))
+(check-exn #rx"OAZO syntax error in parse" (lambda () (top-interp prog12)))
+(check-exn #rx"OAZO runtime error in subst" (lambda () (top-interp prog13)))
+(check-exn #rx"OAZO runtime error in find-func" (lambda () (top-interp prog14)))
+(check-exn #rx"OAZO runtime error in subst" (lambda () (top-interp prog15)))
 
 
 ; parse-prog tests
