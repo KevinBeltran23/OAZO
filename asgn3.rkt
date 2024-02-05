@@ -1,31 +1,5 @@
 #lang typed/racket
 (require typed/rackunit)
-; errors to test for
-;
-; --> what should happend when the EXPN in the function defintion is an id?
-;     '{func {addtwo x} : f}
-;     (just an function name, not a function call)
-;     runtime
-;     write a test in top-interp, should fail in subst
-;
-; --> what about having the input of a function application be a symbol?
-;     '{f1 f2}
-;     runtime
-;     write a test in top-interp, should fail in interp
-;    
-; --> what about a function call on a function that doesn't exist?
-;     runtime
-;     write a test in top-interp, should fail in find-func
-;
-; --> function with argument symbol different from symbol used in body? ex. '{func {addtwo y} : {+ x 2}}
-;     runtime
-;     write a test in top-interp, should fail in subst
-;
-; to do
-;
-; change name of id in FundefC structure to ... name.
-; list of arguments instead of 1 argument?
-
 
 ;;;; ---- NOTES ----
 
@@ -202,6 +176,18 @@
 (define (interp-fns [funs : (Listof FundefC)]) : Real
   (interp-fns-iterater funs funs))
 
+;; Recursive Helper Function for interp-fns - Consumes two lists of function definitions:
+;;     1) searching as the function defs we will search for 'main in
+;;     2) all as the record of all function defs in the program
+;; - Iterates through searching to find a function 'main, which it then evaluates
+;; - If no function named 'main is found, raises an error
+(define (interp-fns-iterater [searching : (Listof FundefC)] [all : (Listof FundefC)]) :  Real
+  (match searching
+    [(cons (FundefC n a b) r) #:when (equal? n (idC 'main)) (interp-func (FundefC n a b) (numC 0) all)]
+    [(cons f r) (interp-fns-iterater r all)]
+    ['() (error 'interp-fns-iterater "OAZO runtime error in interp-fns-iterater:
+          no main function defined in ~e" all)]))
+
 ;; interp-func
 ;; - given a FundefC, an ExprC, and a list of functions, then evaluates the FundefC by:
 ;; 1) evaluating the ExprC
@@ -241,18 +227,6 @@
     [(FunappC app-name app-arg) (FunappC app-name (subst name app-arg numb var))]
     [(ifleq0? if-expr then-expr else-expr)
      (ifleq0? (subst name if-expr numb var) (subst name then-expr numb var) (subst name else-expr numb var))]))
-
-;; Recursive Helper Function for interp-fns - Consumes two lists of function definitions:
-;;     1) searching as the function defs we will search for 'main in
-;;     2) all as the record of all function defs in the program
-;; - Iterates through searching to find a function 'main, which it then evaluates
-;; - If no function named 'main is found, raises an error
-(define (interp-fns-iterater [searching : (Listof FundefC)] [all : (Listof FundefC)]) :  Real
-  (match searching
-    [(cons (FundefC n a b) r) #:when (equal? n (idC 'main)) (interp-func (FundefC n a b) (numC 0) all)]
-    [(cons f r) (interp-fns-iterater r all)]
-    ['() (error 'interp-fns-iterater "OAZO runtime error in interp-fns-iterater:
-          no main function defined in ~e" all)]))
 
 
 ;;;; ---- TESTS ----
@@ -331,6 +305,20 @@
                 {func {main init} : {ifleq0?}}})
 (define prog16 '{{func {ignoreit x} : {+ 3 4}}
                 {func {main init} : {ignoreit{/ 1 {+ 0 0}}}}})
+(define prog17 '{{func {: x} : {+ 3 x}}
+                 {func {main init} : {: 7}}})
+(define prog18 '{{func {f x} : {+ 3 x}}
+                 {func {main init} : f}})
+(define prog19 '{{func {f x} : {+ 3 x}}
+                 {func {main init} : {f}}})
+(define prog20 '{{func {f1 x} : {+ 3 x}}
+                 {func {f2 x} : {+ 4 x}}
+                 {func {main init} : {f1 f2}}})
+(define prog21 '{{func {f1 x} : {+ 3 x}}
+                 {func {f2 x} : {+ 4 x}}
+                 {func {main init} : {f3 5}}})
+(define prog22 '{{func {f1 x} : {+ 3 y}}
+                 {func {main init} : {f1 5}}})
 
 ; top-interp tests
 (check-equal? (top-interp prog1) 4)
@@ -352,6 +340,12 @@
 (check-exn #rx"OAZO syntax error in parse: expected valid syntax" (lambda () (top-interp prog14)))
 (check-exn #rx"OAZO syntax error in parse: expected valid syntax" (lambda () (top-interp prog15)))
 (check-exn #rx"OAZO runtime error in interp: invalid expression" (lambda () (top-interp prog16)))
+(check-exn #rx"OAZO syntax error in parse-fundef: invalid function name" (lambda () (top-interp prog17)))
+(check-exn #rx"OAZO runtime error in subst" (lambda () (top-interp prog18)))
+(check-exn #rx"OAZO syntax error in parse" (lambda () (top-interp prog19)))
+(check-exn #rx"OAZO runtime error in subst" (lambda () (top-interp prog20)))
+(check-exn #rx"OAZO runtime error in find-func" (lambda () (top-interp prog21)))
+(check-exn #rx"OAZO runtime error in subst" (lambda () (top-interp prog22)))
 
 ; parse-prog tests
 (check-equal? (parse-prog '{{func {six x} : {+ 2 4}}
