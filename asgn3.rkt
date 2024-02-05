@@ -2,9 +2,6 @@
 (require typed/rackunit)
 ; errors to test for
 ;
-; --> There are three test cases we are failing. Can only see the next one, not the last two
-;     we need to raise an exception with input '(parse '(+ func a))
-;
 ; --> what should happend when the EXPN in the function defintion is an id?
 ;     '{func {addtwo x} : f}
 ;     (just an function name, not a function call)
@@ -91,7 +88,7 @@
       (equal? '- name)
       (equal? '* name)
       (equal? '/ name)
-      (equal? 'fun name)
+      (equal? 'func name)
       (equal? 'ifleq0? name)
       (equal? ': name)
       (equal? 'else name)))
@@ -137,7 +134,10 @@
        [(or (reserved-name? l) (reserved-name? r))
         (error 'parse "OAZO syntax error in parse: expected valid syntax, got ~e" l)]
        [else (binopC '/ (parse l) (parse r))])]
-    [(list name expr) (FunappC (parse-id name) (parse expr))]
+    [(list name expr)
+     (cond
+       [(reserved-name? name) (error 'parse "OAZO syntax error in parse: expected valid syntax")]
+       [else (FunappC (parse-id name) (parse expr))])]
     [(list 'ifleq0? test-expr then-expr else-expr)
      (cond
        [(or (reserved-name? test-expr) (reserved-name? then-expr) (reserved-name? else-expr))
@@ -407,6 +407,7 @@
 (check-exn #rx"syntax" (lambda () (parse '{1 2 3})))
 (check-exn #rx"syntax" (lambda () (parse 'ifleq0?)))
 (check-exn #rx"OAZO" (lambda () (parse '{+ func a})))
+(check-exn #rx"OAZO" (lambda () (parse '{+ b})))
 
  
 
