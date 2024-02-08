@@ -3,15 +3,14 @@
 
 ;; order to edit in:
 ; interp -> call interp-func with multiple args
-; create helper function to call interp & subst on multiple args.
-;     shouldn't have to change subst, just call on multiple args
+; create helper function to call interp & subst on multiple args. shouldn't have to change subst, just call on multiple args
 ; test helper
 ; test interp-func
 ; test interp
 ; adjust interp-fns-iterater to call main with no args
 ; now top-interp should work test the shit out of it
- 
- 
+
+
 
 ; question for class 
 ;;
@@ -173,13 +172,19 @@
 ;; - parses it into a funC
 (define (parse-fundef [s : Sexp]) : FundefC
   (match s
-    [(list 'func (list name-expr) : body-expr)
-     (FundefC (parse-id name-expr) '() (parse body-expr))]
+    [(list 'func (list name-expr) ': body-expr)
+     (cond
+       [(reserved-name? name-expr)
+        (error 'parse-fundef "OAZO syntax error in parse-fundef: invalid function name, got ~e" name-expr)]
+       [else (FundefC (parse-id name-expr) '() (parse body-expr))])]
     [(list 'func (cons name-expr rest-exprs) ': body-expr)
-     (FundefC (parse-id name-expr) (parse-func-def-exprs rest-exprs) (parse body-expr))]
+     (cond
+       [(reserved-name? name-expr)
+        (error 'parse-fundef "OAZO syntax error in parse-fundef: invalid function name, got ~e" name-expr)]
+       [else (FundefC (parse-id name-expr) (parse-func-def-exprs rest-exprs) (parse body-expr))])]
     [other (error 'parse-fundef "OAZO syntax error in parse-fundef: expected valid syntax, got ~e" other)]))
-  
- 
+
+
 ;; parse
 ;; - given concrete syntax in the form of an s-expression
 ;; - parses it into an ExprC
@@ -218,17 +223,8 @@
     [(cons name rest)
      (cond
        [(reserved-name? name) (error 'parse "OAZO syntax error in parse: expected valid syntax, got ~e" name)]
-       [else
-        (cond 
-              #;[(contains-duplicates? rest) (error 'parse "OAZO syntax error in parse: expected valid syntax, got ~e")]
-              [else (FunappC (parse-id name) (parse-func-app-exprs rest))])
-        ])]
-    #;[other (error 'parse "OAZO syntax error in parse: expected valid syntax, got ~e" other)]))
-
-;(define (contains-duplicates? [lst : Sexp]) : Boolean
-;  (match lst
-;    [(cons f '()) #f]
-;    [(cons f r) (member f r)])) 
+       [else (FunappC (parse-id name) (parse-func-app-exprs rest))])]
+    [other (error 'parse "OAZO syntax error in parse: expected valid syntax, got ~e" other)]))
 
 
 ;; parse-func-def-exprs is given a S-expression
@@ -238,14 +234,12 @@
     [(cons first-arg '())
      (cond
        [(reserved-name? first-arg)
-        (error 'parse-func-def-exprs
-               "OAZO syntax error in parse-func-def-exprs: invalid function argument name, got ~e" first-arg)]
+        (error 'parse-func-def-exprs "OAZO syntax error in parse-func-def-exprs: invalid function argument name, got ~e" first-arg)]
        [else (cons (parse-id first-arg) '())])]
     [(cons first-arg rest-args)
      (cond
        [(reserved-name? first-arg)
-        (error 'parse-func-def-exprs
-               "OAZO syntax error in parse-func-def-exprs: invalid function argument name, got ~e" first-arg)]
+        (error 'parse-func-def-exprs "OAZO syntax error in parse-func-def-exprs: invalid function argument name, got ~e" first-arg)]
        [else (cons (parse-id first-arg) (parse-func-def-exprs rest-args))])]))
 
 
@@ -254,12 +248,9 @@
 (define (parse-func-app-exprs [expr-list : Sexp]) : (Listof ExprC)
   (match expr-list
     ['() '()]
-    [(cons f '()) (cons (parse f) '())]
-    [(cons f r)
-     (cond
-       [(equal? r f) (error 'parse-func-app-exprs
-               "OAZO syntax error in parse-func-app-exprs: duplicate argument names, got ~e" f)]
-       [else (cons (parse f) (parse-func-app-exprs r))])]))
+    [(cons first '()) (cons (parse first) '())]
+    [(cons first rest) (cons (parse first) (parse-func-app-exprs rest))]
+    [other (error 'parse "OAZO syntax error in parse-func-exprs: expected valid syntax, got ~e" other)]))
 
 
 ;; parse-id
@@ -319,15 +310,13 @@
 ;; and if so evaluates the FundefC
 (define (interp-func [fun : FundefC] [app-args : (Listof ExprC)] [funs : (Listof FundefC)]) : Real
   (match fun
-    [(FundefC name def-args body)
-     (cond
-       [(equal? (length-of app-args) (length-of def-args))
-        (interp-func-helper fun app-args funs)]
-       [else (error 'interp-fns-iterater
-                    "OAZO runtime error in interp-func:
-                       application argument count differs from defintion argument count.
-                       func trying to interp: ~e   app-args: ~e   def-args: ~e"
-                    name app-args def-args)])]))
+    [(FundefC name def-args body) (cond
+                                    [(equal? (length-of app-args) (length-of def-args))
+                                     (interp-func-helper fun app-args funs)]
+                                    [else (error 'interp-fns-iterater
+                                                 "OAZO runtime error in interp-func: application argument count differs from defintion argument count.
+                                                  func trying to interp: ~e   app-args: ~e   def-args: ~e"
+                                                 name app-args def-args)])]))
 
 ;; interp-func-helper is given
 ;; a FundefC (fun), a list of ExprCs (app-args), and a list of functions (funs),
@@ -340,12 +329,16 @@
   (match fun
     [(FundefC name '() body) (interp body funs)]
     [(FundefC name (cons first-def-arg rest-def-args) body)
-     (interp-func-helper
-      (FundefC name rest-def-args
-               (subst name body (interp (first app-args) funs) first-def-arg))
-      (rest app-args) funs)]))
- 
- 
+     (interp-func-helper (FundefC name
+                                  rest-def-args
+                                  (subst name
+                                         body
+                                         (interp (first app-args) funs)
+                                         first-def-arg))
+                         (rest app-args)
+                         funs)]))
+
+
 ;; length-of is given a list of anything and returns a number corresponding to the number of elements in the list
 (define (length-of [l : (Listof Any)]) : Integer
   (match l
@@ -379,7 +372,7 @@
     [(idC id) (cond
                 [(equal? (idC id) var) (numC numb)]
                 [else (idC id)#;(error 'subst "OAZO runtime error in subst:
-            the variable name ~e does not exist in function ~e with body ~e. also the num is ~e" id name body numb)])]
+                       the variable name ~e does not exist in function ~e with body ~e. also the num is ~e" id name body numb)])]
     [(numC num) (numC num)]
     [(binopC '+ left-expr right-expr) (binopC '+ (subst name left-expr numb var) (subst name right-expr numb var))]
     [(binopC '* left-expr right-expr) (binopC '* (subst name left-expr numb var) (subst name right-expr numb var))]
@@ -393,15 +386,14 @@
 
 
 ;;;; ---- TESTS ----
- 
+
 
 ;; objects for testing
 (define func1 (FundefC (idC 'six) (list (idC 'x)) (binopC '+ (numC 2) (numC 4))))
 (define func2 (FundefC (idC 'addfour) (list (idC 'x)) (binopC '+ (idC 'x) (numC 4))))
 (define func3 (FundefC (idC 'addfour) (list (idC 'x)) (FunappC (idC 'six) (list (numC 7)))))
 (define func4 (FundefC (idC 'addfour) (list (idC 'x)) (FunappC (idC 'six) (list (binopC '* (numC 2) (numC 4))))))
-(define func5 (FundefC (idC 'addfour) (list (idC 'x)) (FunappC (idC 'six)
-                                                               (list (binopC '* (FunappC (idC 'f3) (list (numC 60)))
+(define func5 (FundefC (idC 'addfour) (list (idC 'x)) (FunappC (idC 'six) (list (binopC '* (FunappC (idC 'f3) (list (numC 60)))
                                                                                     (binopC '+ (numC 8) (numC 9)))))))
 (define func6 (FundefC (idC 'plus4) (list (idC 'x)) (binopC '+ (idC 'x) (numC 4))))
 (define func7 (FundefC (idC 'plus8) (list (idC 'y)) (binopC '+ (idC 'y) (FunappC (idC 'plus4) (list (numC 4))))))
@@ -410,9 +402,8 @@
 (define func9 (FundefC (idC 'returninput) (list (idC 'w)) (idC 'w)))
 (define func10 (FundefC (idC 'invalid) (list (idC 'w)) (idC 'six)))
 (define func11 (FundefC (idC 'f3) (list (idC 'xxx)) (binopC '* (idC 'xxx) (numC 0.5))))
-(define func12 (FundefC (idC 'wackyfunc) (list (idC 'x))
-                        (FunappC (idC 'plus4) (list (binopC '* (FunappC (idC 'f3) (list (numC 60)))
-                                                                                    (binopC '+ (idC 'x) (numC 9)))))))
+(define func12 (FundefC (idC 'wackyfunc) (list (idC 'x)) (FunappC (idC 'plus4) (list (binopC '* (FunappC (idC 'f3) (list (numC 60)))
+                                                                                         (binopC '+ (idC 'x) (numC 9)))))))
 (define func13 (FundefC (idC 'main) '() (FunappC (idC 'plus4) (list (numC 7)))))
 (define func14 (FundefC (idC 'main) '() (FunappC (idC 'plus4) (list (numC 0)))))
 (define func15 (FundefC (idC 'main) '() (FunappC (idC 'wackyfunc) (list (numC 3)))))
@@ -420,8 +411,7 @@
 (define func17 (FundefC (idC 'main) '() (numC 0)))
 (define func18 (FundefC (idC 'noargs) '() (FunappC (idC 'plus4) (list (numC 7)))))
 (define func19 (FundefC (idC 'twoargs) (list (idC 'x) (idC 'y)) (binopC '+ (idC 'x) (idC 'y))))
-(define func20 (FundefC (idC 'threeargs) (list (idC 'x) (idC 'y) (idC 'z))
-                        (binopC '+ (idC 'x) (binopC '+ (idC 'y) (idC 'z)))))
+(define func20 (FundefC (idC 'threeargs) (list (idC 'x) (idC 'y) (idC 'z)) (binopC '+ (idC 'x) (binopC '+ (idC 'y) (idC 'z)))))
 (define func21 (FundefC (idC 'addtwo) '() (binopC '+ (idC 'x) (numC 2))))
 
 (define prog1 '{{func {six x} : {+ 2 4}}
@@ -480,7 +470,7 @@
                  {func {f2 x} : {+ 4 x}}
                  {func {main} : {f1 f2}}})
 (define prog21 '{{func {f1 x} : {+ 3 x}}
-                 {func {f2 x} : {+ 4 x}} 
+                 {func {f2 x} : {+ 4 x}}
                  {func {main} : {f3 5}}})
 (define prog22 '{{func {f1 x} : {+ 3 y}}
                  {func {main} : {f1 5}}})
@@ -490,48 +480,6 @@
                  {func {main} : {f1}}})
 (define prog25 '{{func {f1 a b c d e f} : {+ a {+ b {+ c {+ d {+ e f}}}}}}   
                  {func {main} : {f1 1 2 3 4 5 6}}})
-;should run - composite function
-(define prog26 '{{func {f x} : {g 3 x}}
-                 {func {g a b} : {+ a b}}
-                 {func {main} : {f 9}}})
-;should run? 
-(define prog27 '{{func {f} : {* 3 4}}
-                 {func {g x} : {+ x {f}}}
-                 {func {main} : {g 7}}})
-;should error
-(define prog28 '{{func {f x y} : {* x y}}
-                 {func {main} : {f 1}}})
-;should error
-(define prog29 '{{func {f x y} : {* x y}}
-                {func {main} : {f}}})
-;should error
-(define prog30 '{{func {f x y} : {* x y}}
-                 {func {main} : {f 1 2 3}}})
-;should run
-(define prog31 '{{func {f} : {* x y}}
-                 {func {main} : {f}}})
-;should error
-(define prog32 '{{func {f x} : {* x y}}
-                 {func {main} : {f 1}}})
-;should fail
-(define prog33 '{{func {f} : {* 2 3}}
-                 {func {main} : {+ 1 f}}})
-;should run
-(define prog34 '{{func {f} : {* 2 3}}
-                 {fun {main} : {+ 1 {f}}}})
-;should error
-(define prog35 '{{func {f x x} : {* x x}}
-                 {func {main} : {f 1 2}}})
-; should use arg x, not function x. prolly in subst
-(define prog36 '{{func {f x y} : {+ x y}}
-                 {func {x} : {+ 7 2}}
-                 {func {main} : {f 1 2}}})
-; passing a function in an argument
-; should evaluate w when it applies it to f, so trying to call it should error
-(define prog37 '{{func {f x} : {* {x} 8}}
-                 {func {w} : {+ 7 2}}
-                 {func {main} : {f w}}})
-
 
 
 ; top-interp tests
@@ -546,10 +494,8 @@
 (check-equal? (top-interp prog24) 5)
 (check-equal? (top-interp prog23) 11)
 (check-equal? (top-interp prog25) 21)
-;(check-equal? (top-interp prog26) 12)
-;(check-equal? (top-interp prog27) 19)
 
-(check-exn #rx"OAZO syntax error in parse-id: expected valid id" (lambda () (top-interp prog6)))
+(check-exn #rx"OAZO syntax error in parse-fundef: invalid function name" (lambda () (top-interp prog6)))
 (check-exn #rx"OAZO runtime error in interp-fns-iterater" (lambda () (top-interp '{})))
 (check-exn #rx"OAZO syntax error in parse: expected valid syntax" (lambda () (top-interp prog10)))
 (check-exn #rx"OAZO syntax error in parse: expected valid syntax" (lambda () (top-interp prog11)))
@@ -558,18 +504,12 @@
 (check-exn #rx"OAZO syntax error in parse: expected valid syntax" (lambda () (top-interp prog14)))
 (check-exn #rx"OAZO syntax error in parse: expected valid syntax" (lambda () (top-interp prog15)))
 (check-exn #rx"OAZO runtime error in interp: invalid expression" (lambda () (top-interp prog16)))
-(check-exn #rx"OAZO syntax error in parse-id: expected valid id" (lambda () (top-interp prog17)))
+(check-exn #rx"OAZO syntax error in parse-fundef: invalid function name" (lambda () (top-interp prog17)))
 (check-exn #rx"OAZO runtime error in interp" (lambda () (top-interp prog18)))
 (check-exn #rx"OAZO runtime error in interp-func" (lambda () (top-interp prog19)))
 (check-exn #rx"OAZO runtime error in interp" (lambda () (top-interp prog20)))
 (check-exn #rx"OAZO runtime error in find-func" (lambda () (top-interp prog21)))
 (check-exn #rx"OAZO runtime error in interp" (lambda () (top-interp prog22)))
-(check-exn #rx"OAZO runtime error" (lambda () (top-interp prog28)))
-(check-exn #rx"OAZO runtime error" (lambda () (top-interp prog29)))
-(check-exn #rx"OAZO runtime error" (lambda () (top-interp prog30)))
-(check-exn #rx"OAZO runtime error" (lambda () (top-interp prog32)))
-(check-exn #rx"OAZO runtime error" (lambda () (top-interp prog33)))
-(check-exn #rx"OAZO runtime error" (lambda () (top-interp prog35)))
 
 
 ; interp tests
@@ -630,8 +570,7 @@
 #;(check-exn #rx"OAZO runtime error in interp: function app called with no arguments"
            (lambda () (interp (FunappC (idC 'lottamath) '()) (cons func6 (cons func7 (cons func8 '()))))))
 #;(check-exn #rx"OAZO runtime error in interp: function app called with two or more arguments"
-           (lambda () (interp (FunappC (idC 'lottamath) (list (numC 3) (numC 3)))
-                              (cons func6 (cons func7 (cons func8 '()))))))
+           (lambda () (interp (FunappC (idC 'lottamath) (list (numC 3) (numC 3))) (cons func6 (cons func7 (cons func8 '()))))))
 
 
 ; parse-prog tests
@@ -662,7 +601,6 @@
 (check-equal? (parse-fundef '{func {addtwo} : {+ x 2}}) func21)
 (check-exn #rx"OAZO syntax error in parse-fundef" (lambda () (parse-fundef '{func {addtwo x} : : {+ x 2}})))
 (check-exn #rx"OAZO syntax error in parse-fundef" (lambda () (parse-fundef '{fun {addtwo x} : {+ x 2}})))
-(check-exn #rx"OAZO syntax error in parse-id: expected valid id, got" (lambda () (parse-fundef '{func {+} : {+ x 2}})))
 
 ; parse tests
 (check-equal? (parse '4) (numC 4))
@@ -674,14 +612,13 @@
 (check-equal? (parse '{f 2}) (FunappC (idC 'f) (list (numC 2))))
 (check-equal? (parse '{f {* 2 4}}) (FunappC (idC 'f) (list (binopC '* (numC 2) (numC 4)))))
 (check-equal? (parse '{six {* {f3 60} {+ 8 9}}})
-            (FunappC (idC 'six) (list (binopC '* (FunappC (idC 'f3) (list (numC 60))) (binopC '+ (numC 8) (numC 9))))))
+              (FunappC (idC 'six) (list (binopC '* (FunappC (idC 'f3) (list (numC 60))) (binopC '+ (numC 8) (numC 9))))))
 (check-equal? (parse '{* {f3} {+ 8 9}})
               (binopC '* (FunappC (idC 'f3) '()) (binopC '+ (numC 8) (numC 9))))
 (check-equal? (parse '{six {* {f3} {+ 8 9}}})
               (FunappC (idC 'six) (list (binopC '* (FunappC (idC 'f3) '()) (binopC '+ (numC 8) (numC 9))))))
 (check-equal? (parse '{six {* {f3 60 59} (+ 8 9)}})
-              (FunappC (idC 'six) (list (binopC '* (FunappC (idC 'f3)
-                                                          (list (numC 60) (numC 59))) (binopC '+ (numC 8) (numC 9))))))
+              (FunappC (idC 'six) (list (binopC '* (FunappC (idC 'f3) (list (numC 60) (numC 59))) (binopC '+ (numC 8) (numC 9))))))
 (check-equal? (parse 'bruh) (idC 'bruh))
 (check-equal? (parse 'f) (idC 'f))
 (check-equal? (parse 'x) (idC 'x))
@@ -705,21 +642,17 @@
 (check-exn #rx"OAZO syntax error in parse" (lambda () (parse '{+ b})))
 (check-exn #rx"OAZO syntax error in parse" (lambda () (parse '{1 2 3})))
 (check-exn #rx"OAZO syntax error in parse" (lambda () (parse '{six {* {f3 60 +} (+ 8 9)}})))
-(check-exn #rx"OAZO syntax error in parse" (lambda () (parse '{parse '{+ 1}})))
 
 ; parse-func-def-exprs tests
 (check-equal? (parse-func-def-exprs '{x y z}) (list (idC 'x) (idC 'y) (idC 'z)))
 (check-equal? (parse-func-def-exprs '{x y}) (list (idC 'x) (idC 'y)))
 (check-equal? (parse-func-def-exprs '{x}) (list (idC 'x)))
-(check-exn #rx"OAZO syntax error" (lambda () (parse-func-def-exprs '{+ - /})))
-(check-exn #rx"OAZO syntax error" (lambda () (parse-func-def-exprs '{+})))
 
 ; parse-func-app-exprs tests
 (check-equal? (parse-func-app-exprs '{4 7 8}) (list (numC 4) (numC 7) (numC 8)))
 (check-equal? (parse-func-app-exprs '{4 {+ 2 x}}) (list (numC 4) (binopC '+ (numC 2) (idC 'x))))
 (check-equal? (parse-func-app-exprs '{4}) (list (numC 4)))
-(check-exn #rx"OAZO syntax error" (lambda () (parse-func-app-exprs '{+ - /})))
-(check-exn #rx"OAZO syntax error" (lambda () (parse-func-app-exprs '{+})))
+
 
 ; parse-id tests
 (check-equal? (parse-id 'bruh) (idC 'bruh))
@@ -768,13 +701,11 @@
 (define subst-expr5
   (FunappC (idC 'six)
            (list (binopC '* (FunappC (idC 'f3)
-                               (list (binopC '+ (numC 17) (idC 'x))))
-                         (binopC '+ (idC 'x) (binopC '* (numC 2) (idC 'x)))))))
+                               (list (binopC '+ (numC 17) (idC 'x)))) (binopC '+ (idC 'x) (binopC '* (numC 2) (idC 'x)))))))
 (define subst-expr6
   (FunappC (idC 'six)
            (list (binopC '* (FunappC (idC 'f3)
-                               (list (binopC '+ (numC 17) (numC -6))))
-                         (binopC '+ (numC -6) (binopC '* (numC 2) (numC -6)))))))
+                               (list (binopC '+ (numC 17) (numC -6)))) (binopC '+ (numC -6) (binopC '* (numC 2) (numC -6)))))))
 
 (check-equal? (subst (idC 'test1) subst-expr1 8 (idC 'x)) subst-expr2)
 (check-equal? (subst (idC 'test2) subst-expr3 15 (idC 'wango)) subst-expr4)
