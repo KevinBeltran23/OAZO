@@ -42,6 +42,11 @@
 (struct FundefC ([id : idC] [args : (Listof idC)] [body : ExprC]) #:transparent)
 
 
+;; binop-s-list is a list of the binop operators
+;;   used to check if a symbol is a binop in parse
+(define binop-s-list (list '+ '- '* '/))
+
+
 
 
 ;;;; ---- TOP-INTERP and INTERP ----
@@ -61,19 +66,8 @@
 (define (interp [exp : ExprC] [funs : (Listof FundefC)]) : Real
   (match exp
     [(numC n) n]
-    [ (binopC op l r)
-      (match op
-       ['+ (+ (interp l funs) (interp r funs))]
-       ['* (* (interp l funs) (interp r funs))]
-       ['- (- (interp l funs) (interp r funs))]
-       ['/
-        (define left (interp l funs))
-        (define right (interp r funs))
-        (cond
-          [(equal? right 0)
-           (error 'interp "OAZO runtime error in interp: invalid expression, division by zero ~e" exp)]
-          [else (/ left right)])])]
-    [ (FunappC name args) (interp-func (find-func name funs) args funs)]
+    [(binopC op l r) (interp-binop op l r funs)]
+    [(FunappC name args) (interp-func (find-func name funs) args funs)]
     [(ifleq0? test-expr then-expr else-expr)
      (cond 
          [(<= (interp test-expr funs) 0) (interp then-expr funs)]
@@ -108,7 +102,7 @@
      (FundefC (parse-id name-expr) (parse-func-def-exprs rest-exprs '()) (parse body-expr))]
     [other (error 'parse-fundef "OAZO syntax error in parse-fundef: expected valid syntax, got ~e" other)]))
   
- 
+
 ;; parse
 ;; - given concrete syntax in the form of an s-expression
 ;; - parses it into an ExprC
@@ -119,26 +113,12 @@
      (cond
        [(reserved-name? symb) (error 'parse "OAZO syntax error in parse: expected valid syntax, got ~e" symb)]
        [(idC symb)])]
-    [(list '* l r)
-     (cond
-       [(or (reserved-name? l) (reserved-name? r))
-        (error 'parse "OAZO syntax error in parse: expected valid syntax, got ~e" l)]
-       [else (binopC '* (parse l) (parse r))])]
-    [(list '+ l r)
-     (cond
-       [(or (reserved-name? l) (reserved-name? r))
-        (error 'parse "OAZO syntax error in parse: expected valid syntax, got ~e" l)]
-       [else (binopC '+ (parse l) (parse r))])]
-    [(list '- l r)
-     (cond
-       [(or (reserved-name? l) (reserved-name? r))
-        (error 'parse "OAZO syntax error in parse: expected valid syntax, got ~e" l)]
-       [else (binopC '- (parse l) (parse r))])]
-    [(list '/ l r)
-     (cond
-       [(or (reserved-name? l) (reserved-name? r))
-        (error 'parse "OAZO syntax error in parse: expected valid syntax, got ~e" l)]
-       [else (binopC '/ (parse l) (parse r))])]
+    [(list s l r) #:when
+                   (argInList? s binop-s-list)
+                   (cond
+                     [(or (reserved-name? l) (reserved-name? r))
+                      (error 'parse "OAZO syntax error in parse: expected valid syntax, got ~e" l)]
+                     [else (binopC (cast s Symbol) (parse l) (parse r))])]
     [(list 'ifleq0? test-expr then-expr else-expr)
      (cond
        [(or (reserved-name? test-expr) (reserved-name? then-expr) (reserved-name? else-expr))
@@ -278,7 +258,22 @@
     ['() 0]
     [(cons f r) (+ 1 (length-of r))]))
 
- 
+
+;; interp-binop interprets a binop
+(define (interp-binop [op : Symbol] [l : ExprC] [r : ExprC] [funs : (Listof FundefC)]) : Real
+  (match op
+       ['+ (+ (interp l funs) (interp r funs))]
+       ['* (* (interp l funs) (interp r funs))]
+       ['- (- (interp l funs) (interp r funs))]
+       ['/
+        (define left (interp l funs))
+        (define right (interp r funs))
+        (cond
+          [(equal? right 0)
+           (error 'interp-binop "OAZO runtime error in interp-binop: invalid expression, division by zero ~e" exp)]
+          [else (/ left right)])]))
+
+
 ;; find-func
 ;; - given a function name and a list of functions
 ;; - returns the function within the given list that corresponds to the given name
@@ -467,7 +462,7 @@
 (check-exn #rx"OAZO syntax error in parse: expected valid syntax" (lambda () (top-interp prog13)))
 (check-exn #rx"OAZO syntax error in parse: expected valid syntax" (lambda () (top-interp prog14)))
 (check-exn #rx"OAZO syntax error in parse: expected valid syntax" (lambda () (top-interp prog15)))
-(check-exn #rx"OAZO runtime error in interp: invalid expression" (lambda () (top-interp prog16)))
+(check-exn #rx"OAZO runtime error in interp-binop:" (lambda () (top-interp prog16)))
 (check-exn #rx"OAZO syntax error in parse-id: expected valid id" (lambda () (top-interp prog17)))
 (check-exn #rx"OAZO runtime error in interp:" (lambda () (top-interp prog18)))
 (check-exn #rx"OAZO runtime error in interp-func:" (lambda () (top-interp prog19)))
@@ -662,8 +657,6 @@
 (check-equal? (interp-func func19 (list (numC 204) (numC 80)) (cons func19 '())) 284)
 (check-exn #rx"OAZO runtime error in find-func"
            (lambda () (interp-func func7 (list (numC 3)) (cons func7 (cons func8 '())))))
-#;(check-exn #rx"OAZO runtime error in interp"
-           (lambda () (interp-func func7 (list (idC 'x)) (cons func6 (cons func7 (cons func8 '()))))))
 (check-exn #rx"OAZO runtime error in interp"
            (lambda () (interp-func func10 (list (numC 204)) (cons func10 (cons func7 (cons func8 (cons func1 '())))))))
 
