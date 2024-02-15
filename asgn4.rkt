@@ -119,7 +119,7 @@
                      [(or (reserved-name? l) (reserved-name? r))
                       (error 'parse "OAZO syntax error in parse: expected valid syntax, got ~e" l)]
                      [else (binopC (cast s Symbol) (parse l) (parse r))])]
-    [(list 'ifleq0? test-expr then-expr else-expr)
+    [(list 'ifleq0? test-expr then-expr else-expr) (ifleq0? (parse test-expr) (parse then-expr) (parse else-expr))
      (cond
        [(or (reserved-name? test-expr) (reserved-name? then-expr) (reserved-name? else-expr))
         (error 'parse "OAZO syntax error in parse: expected valid syntax, got ~e ~e ~e" test-expr then-expr else-expr)]
