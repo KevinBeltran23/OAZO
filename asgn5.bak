@@ -52,11 +52,9 @@
 ; false
 ; error
 
-;; Define Binding Type
-(define-type Binding (List IdC Value))
 
-;; Define Environment Type
-(define-type Env (Listof Binding))
+;; we need to define the environment type(s)
+
 
 
 
@@ -72,15 +70,19 @@
 ;; interp
 ;; - given an ExprC and an environment
 ;; - Interprets the expression with the given environment
-;; - p sure it should return some kind of Value type - maybe NumV???
-#;(define (interp [exp : ExprC] [env : Env]) : NumV
-  (match exp
-    [(NumC n) ...]
-    [(IdC s) ...]
-    [(StrC s) ...]
-    [(IfC test-expr then-expr else-expr) ...]
-    [(LamC params body) ...]
-    [(AppC name args) ...]))
+#;(define (interp [exp : ExprC] [env : Env]) : Real
+  0)
+
+;; serialize
+;; - should accept any OAZO5 value, and return a string
+;; - For numbers, use ~v directly, so that (for instance) the serialization of
+;;   your representation of 34 would produce the string "34"
+;; - The serialization of strings should include wrapping double-quotes. You can use the racket function ~v for this as well.
+;; - all closures should be serialized as the string "#<procedure>", and primitive operators should be serialized as the string "#<primop>".
+#;(define (serialize [val : Value]) : String
+  "place holder")
+
+ 
 
 
 ;;;; ---- PARSING ----
@@ -134,35 +136,6 @@
 
 
 ;;;; ---- INTERPRETING
-
-
-;; serialize
-;; - should accept any OAZO5 value, and return a string
-;; - For numbers, use ~v directly, so that (for instance) the serialization of
-;;   your representation of 34 would produce the string "34"
-;; - The serialization of strings should include wrapping double-quotes. You can use the racket function ~v for this as well.
-;; - all closures should be serialized as the string "#<procedure>", and primitive operators should be serialized as the string "#<primop>".
-(define (serialize [val : Value]) : String
-  (match val
-    [(NumV n) (format "~v" n)]
-    [(BoolV b) (cond [b "true"]
-                     [else "false"])]
-    [(StrV s) (format "~v" s)]
-    ; all closures should be serialized as the string "#<procedure>"
-    #;[(CloV ...) ...]
-    ; primitive operators should be serialized as the string "#<primop>"
-    #;[(PrimV ...) ...]))
-
-; temporarily putting serialize tests here
-(check-equal? (serialize (NumV 5)) "5")
-(check-equal? (serialize (BoolV #t)) "true")
-(check-equal? (serialize (BoolV #f)) "false")
-(check-equal? (serialize (StrV "hello")) "\"hello\"")
- 
-
-;; Lookup function to retrieve value from environment
-#;(define (lookup [id : IdC] [env : Environment]) : Value
-  )
 
 
 
