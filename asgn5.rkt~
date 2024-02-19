@@ -52,17 +52,17 @@
 
 
 ;; Value is ...
-(define-type Value (U NumV BoolV StrV CloV PrimV))
+(define-type Value (U NumV BoolV StrV PrimV))
 
 (struct NumV ([n : Real]) #:transparent)
 (struct BoolV ([b : Boolean]) #:transparent)
 (struct StrV ([s : String]) #:transparent)
-(struct CloV ([params : (Listof IdC)] [body : ExprC] [env : Environment]) #:transparent)
+#;(struct CloV ([]) #:transparent)
 (struct PrimV ([s : Symbol]) #:transparent)
 
 
 ;; An Environment is a list of Bindings
-(define-type Environment(Listof Binding))
+(define-type Env(Listof Binding))
 
 
 ;; A Binding consists of a Symbol and a Value
@@ -77,12 +77,9 @@
         (Binding '/ (PrimV '/))
         (Binding '<= (PrimV '<=))
         (Binding 'equal? (PrimV 'equal?))
-        ; not sure if these should be PrimV or BoolV
         (Binding 'true (BoolV #t))
         (Binding 'false (BoolV #f))
         (Binding 'error (PrimV 'error))))
-
-
 
 
 
@@ -101,27 +98,14 @@
 ;; - given an ExprC and an environment
 ;; - Interprets the expression with the given environment
 ;; - p sure it should return some kind of Value type 
-(define (interp [exp : ExprC] [env : Environment]) : Value
+(define (interp [exp : ExprC] [env : Env]) : Value
   (match exp
     [(NumC n) (NumV n)]
-    [(IdC s) (lookup s env)]
+    #;[(IdC s) ...]
     [(StrC s) (StrV s)]
-    [(IfC test-expr then-expr else-expr) (match (interp test-expr env)
-                                           [(BoolV #t) (interp then-expr env)]
-                                           [(BoolV #f) (interp else-expr env)]
-                                           [other (error 'interp "OAZO runtime error in interp:
-                                                                  comparison ~e returned non-boolean value of ~e"
-                                                         test-expr other)])]
-    [(LamC params body) (CloV params
-                              body
-                              env)]
-    [(AppC func args) (match (interp func env)
-                        [(PrimV s) (interp-primv s (map (λ ([arg : ExprC]) (interp arg env)) args))]
-                        #;[(CloV params body clov-env) ...] ; match args to params. add these to clov-env to create calling-env. interp body exp with the environment of calling
-                        [other (error 'interp "OAZO runtime error in interp:
-                                               tried to apply a non function value ~e
-                                               which was interpreted from expr ~e"
-                                      other func)])]))
+    #;[(IfC test-expr then-expr else-expr) ...]
+    #;[(LamC params body) ...]
+    #;[(AppC name args) ...]))
 
 
  
@@ -178,62 +162,6 @@
 
 ;;;; ---- INTERPRETING
 
-;; interp-primv is given a symbol corresponding to a primitive function and
-;; a list of values corresponding to the arguments said function is being called with.
-;; it then evaluates the primitive operator with the given arguments
-(define (interp-primv [op : Symbol] [args : (Listof Value)]): Value
-  (match args
-    [(list arg1) (match op
-                   ['error (error 'user-error "OAZO user error: ~e" (serialize arg1))]
-                   [other (call-interp-primv-error1 op)])]
-    [(list (NumV n1) (NumV n2)) (match op
-                                  ['+ (NumV (+ n1 n2))]
-                                  ['- (NumV (- n1 n2))]
-                                  ['* (NumV (* n1 n2))]
-                                  ['/ (cond
-                                        [(equal? n2 0) (error 'interp-primv "OAZO runtime error in interp-primv:
-                                                                              tried to divide by 0")]
-                                        [else (NumV (/ n1 n2))])]
-                                  ['<= (BoolV (<= n1 n2))]
-                                  ['equal? (BoolV (equal? n1 n2))]
-                                  [other (call-interp-primv-error1 op)])]
-    [(list arg1 arg2) (match op
-                        ['equal? (cond
-                                   [(and (StrV? arg1) (StrV? arg2)) (BoolV (equal? arg1 arg2))]
-                                   [(and (BoolV? arg1) (BoolV? arg2)) (BoolV (equal? arg1 arg2))]
-                                   [else (error 'interp-primv "OAZO runtime error in interp-primv:
-                                                                      tried to call equal? on arguments ~e and ~e" arg1 arg2)])]
-                        ['error (call-interp-primv-error1 op)]
-                        [other (call-interp-primv-error2 op)])]
-    [other (call-interp-primv-error1 op)]))
-
-;; call-interp-primv-error1 is a helper function which calls an error
-;; for interp-primv when there are the wrong number of arguments
-(define (call-interp-primv-error1 [op : Symbol]) : Value
-  (error 'interp-primv "OAZO runtime error in interp-primv: wrong number of arguments given for operator ~e" op))
-
-;; call-interp-primv-error2 is a helper function which calls an error
-;; for interp-primv when there are the wrong type of arguments
-(define (call-interp-primv-error2 [op : Symbol]) : Value
-  (error 'interp-primv "OAZO runtime error in interp-primv: wrong type of arguments given for operator ~e" op))
-
-
-#;(define top-env
-  (list (Binding '+ (CloV (list (IdC 'x) (IdC 'y)) (+ (IdC 'x) (IdC 'y)) '()))
-        (Binding '- (CloV (list (IdC 'x) (IdC 'y)) (- (IdC 'x) (IdC 'y)) '()))
-        (Binding '* (CloV (list (IdC 'x) (IdC 'y)) (* (IdC 'x) (IdC 'y)) '()))
-        (Binding '/ (CloV (list (IdC 'x) (IdC 'y)) (IfC (AppC (IdC 'equal?)
-                                                              (list (IdC 'y) (NumC 0)))
-                                                        (AppC (IdC 'error)
-                                                              (list (StrC "Divide By Zero Error")))
-                                                        (/ (IdC 'x) (IdC 'y))) '()))
-        (Binding '<= (PrimV '<=))
-        (Binding 'equal? (PrimV 'equal?))
-        ; not sure if these should be PrimV or BoolV
-        (Binding 'true (BoolV #t))
-        (Binding 'false (BoolV #f))
-        (Binding 'error (PrimV 'error))))
-
 
 
 ;; serialize
@@ -255,121 +183,23 @@
 
 
 ;; Lookup function to retrieve value from environment
-(define (lookup [s : Symbol] [env : Environment]) : Value
-  (cond
-    [(null? env) (error 'lookup-binding "OAZO runtime error in lookup: Symbol ~e not found in environment" s)]
-    [else (match (first env)
-            [(Binding symb val) #:when (equal? symb s) val]
-            [other (lookup s (rest env))])]))
+#;(define (lookup [id : IdC] [env : Environment]) : Value
+  )
 
- 
+
 
 ;;;; ---- TESTS ----
 
-
-;; top-interp tests
-(check-equal? (top-interp '10) "10")
-(check-equal? (top-interp "Hello") "\"Hello\"")
-
-
 ;; interp tests
 (check-equal? (interp (NumC 5) top-env) (NumV 5))
-(check-equal? (interp (LamC '() (NumC 4)) top-env) (CloV '() (NumC 4) top-env))
-(check-equal? (interp (LamC (list (IdC 'x)) (IdC 'x)) top-env) (CloV (list (IdC 'x)) (IdC 'x) top-env))
-(check-equal? (interp (LamC (list (IdC 'y))
-                            (AppC (LamC (list (IdC 'x)) (IdC 'x))
-                                  (list (IdC 'y))))
-                      top-env)
-              (CloV (list (IdC 'y))
-                    (AppC (LamC (list (IdC 'x)) (IdC 'x))
-                          (list (IdC 'y)))
-                    top-env))
-(check-equal? (interp (IdC '*) top-env) (PrimV '*))
-(check-equal? (interp (IdC 'b) (list (Binding 'b (StrV "test")))) (StrV "test"))
-(check-equal? (interp (IdC 'c) (list (Binding 'c (NumV 5)))) (NumV 5))
-(check-equal? (interp (IdC 'true) top-env) (BoolV #t))
-(check-equal? (interp (IfC (IdC 'true)
-                           (NumC 2)
-                           (NumC 1))
-                      top-env)
-              (NumV 2))
-(check-equal? (interp (IfC (IdC 'false)
-                           (NumC 2)
-                           (NumC 1))
-                      top-env)
-              (NumV 1))
-(check-equal? (interp (AppC (IdC '+) (list (NumC 2) (NumC 10)))
-                      top-env)
-              (NumV 12))
-(check-equal? (interp (AppC (IdC '*)
-                            (list (AppC (IdC '+) (list (NumC 2) (NumC 10)))
-                                  (NumC 5)))
-                      top-env)
-              (NumV 60))
-(check-equal? (interp (AppC (LamC '() (NumC 4)) '())
-                      top-env)
-              (NumV 4))
-(check-equal? (interp (AppC (LamC (list (IdC 'x)) (IdC 'x)) (list (NumC 6)))
-                      top-env)
-              (NumV 6))
-(check-equal? (interp (AppC (LamC (list (IdC 'y))
-                                  (AppC (LamC (list (IdC 'x)) (IdC 'x))
-                                        (list (IdC 'y))))
-                            (list (NumC 6)))
-                      top-env)
-              (NumV 6))
-(check-equal? (interp (AppC (LamC (list (IdC 'x) (IdC 'y))
-                                  (AppC (IdC '+) (list (IdC 'x)  (IdC 'y))))
-                            (list (NumC 6) (NumC 10)))
-                      top-env)
-              (NumV 16))
-(check-exn #rx"not sure yet" (lambda () (interp (AppC (IdC '/) (list (NumC 2) (NumC 0)))
-                                                top-env)))
-(check-exn #rx"OAZO runtime error in interp:" (lambda () (interp (IfC (IdC '+)
-                                                                      (NumC 2)
-                                                                      (NumC 1))
-                                                                 top-env)))
-
-
-
-
-
-;; interp-primv tests
-(check-equal? (interp-primv '+ (list (NumV 7) (NumV 8))) (NumV 15))
-(check-equal? (interp-primv '- (list (NumV 7) (NumV 3))) (NumV 4))
-(check-equal? (interp-primv '* (list (NumV 7) (NumV 3))) (NumV 21))
-(check-equal? (interp-primv '/ (list (NumV 6) (NumV 3))) (NumV 2))
-(check-equal? (interp-primv '<= (list (NumV 6) (NumV 3))) (BoolV #f))
-(check-equal? (interp-primv '<= (list (NumV 3) (NumV 3))) (BoolV #t))
-(check-equal? (interp-primv '<= (list (NumV 2) (NumV 3))) (BoolV #t))
-(check-equal? (interp-primv 'equal? (list (NumV 2) (NumV 2))) (BoolV #t))
-(check-equal? (interp-primv 'equal? (list (StrV "hey") (StrV "hey"))) (BoolV #t))
-(check-equal? (interp-primv 'equal? (list (NumV 3) (NumV 2))) (BoolV #f))
-(check-equal? (interp-primv 'equal? (list (StrV "heyy") (StrV "hey"))) (BoolV #f))
-(check-equal? (interp-primv 'equal? (list (BoolV #t) (BoolV #f))) (BoolV #f))
-(check-exn #rx"OAZO user error:" (lambda () (interp-primv 'error (list (StrV "test")))))
-(check-exn #rx"OAZO runtime error in interp-primv:" (lambda () (interp-primv '+ (list (NumV 7) (NumV 7) (NumV 7)))))
-(check-exn #rx"OAZO runtime error in interp-primv:" (lambda () (interp-primv '+ (list (NumV 7)))))
-(check-exn #rx"OAZO runtime error in interp-primv:" (lambda () (interp-primv '+ '())))
-(check-exn #rx"OAZO runtime error in interp-primv:" (lambda () (interp-primv '+ (list (StrV "hey") (NumV 7)))))
-(check-exn #rx"OAZO runtime error in interp-primv:" (lambda () (interp-primv 'error (list (StrV "test") (StrV "test")))))
-(check-exn #rx"OAZO runtime error in interp-primv:" (lambda () (interp-primv '/ (list (NumV 7) (NumV 0)))))
-(check-exn #rx"OAZO runtime error in interp-primv:" (lambda () (interp-primv 'error (list (NumV 7) (NumV 9)))))
-(check-exn #rx"OAZO runtime error in interp-primv:" (lambda () (interp-primv 'equal? (list (PrimV '+) (BoolV #f)))))
-
-
+(check-equal? (top-interp '10) "10")
+(check-equal? (top-interp "Hello") "\"Hello\"")
 
 ;; serialize tests
 (check-equal? (serialize (NumV 5)) "5")
 (check-equal? (serialize (BoolV #t)) "true")
 (check-equal? (serialize (BoolV #f)) "false")
 (check-equal? (serialize (StrV "hello")) "\"hello\"")
-
-;; lookup tests
-(check-equal? (lookup '+ top-env) (PrimV '+))
-(check-equal? (lookup '- top-env) (PrimV '-))
-(check-exn #rx"OAZO runtime error in lookup:" (lambda () (lookup 'nope top-env)))
-
 
 ;; parse tests
 
