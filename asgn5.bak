@@ -77,7 +77,6 @@
         (Binding '/ (PrimV '/))
         (Binding '<= (PrimV '<=))
         (Binding 'equal? (PrimV 'equal?))
-        ; not sure if these should be PrimV or BoolV
         (Binding 'true (BoolV #t))
         (Binding 'false (BoolV #f))
         (Binding 'error (PrimV 'error))))
@@ -184,22 +183,15 @@
 
 
 ;; Lookup function to retrieve value from environment
-(define (lookup [s : Symbol] [env : Env]) : Value
-  (cond
-    [(null? env) (error 'lookup-binding "Symbol not found in environment")]
-    [else (match (first env)
-            [(Binding s val) val]
-            [other (lookup s (rest env))])]))
+#;(define (lookup [id : IdC] [env : Environment]) : Value
+  )
 
- 
+
 
 ;;;; ---- TESTS ----
 
 ;; interp tests
 (check-equal? (interp (NumC 5) top-env) (NumV 5))
-
-
-;; top-interp tests
 (check-equal? (top-interp '10) "10")
 (check-equal? (top-interp "Hello") "\"Hello\"")
 
@@ -208,9 +200,6 @@
 (check-equal? (serialize (BoolV #t)) "true")
 (check-equal? (serialize (BoolV #f)) "false")
 (check-equal? (serialize (StrV "hello")) "\"hello\"")
-
-;; lookup tests
-(check-equal? (lookup '+ top-env) (PrimV '+))
 
 ;; parse tests
 
