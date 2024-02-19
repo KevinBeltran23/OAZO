@@ -4,7 +4,27 @@
 
 ;;;; ---- NOTES ----
 
+;; Serialize is partially implemented
+;; - missing CloV and PrimV
 
+;; Interp is partially implemented
+;; - only nums and strings
+
+;; Pipeline
+;; - input is parsed into ExprC's
+;; - ExprC's are interpretted into Values
+;; - Values are serialized into Strings
+;;   - At what point do we evaluate function applications etc
+;;     since they will eventually need to be serialized
+
+;; Stuff to do
+;; - write tests so we can implement interp
+;; - expand environment functionality
+;; - variables
+;; - lookup (so environments are useful)
+;; - eventually add closures
+;; - ???? ... ????
+;; - error checking n clean up 
 
 ; We __ implemented assignment 5
 ; Code is organized as follows
@@ -32,58 +52,65 @@
 
 
 ;; Value is ...
-(define-type Value (U NumV BoolV StrV))
+(define-type Value (U NumV BoolV StrV PrimV))
 
 (struct NumV ([n : Real]) #:transparent)
 (struct BoolV ([b : Boolean]) #:transparent)
 (struct StrV ([s : String]) #:transparent)
 #;(struct CloV ([]) #:transparent)
-#;(struct PrimV ([]) #:transparent)
+(struct PrimV ([s : Symbol]) #:transparent)
 
 
-;; these are the primitive operators. when seen individually should parse into IdC
-; +
-; - 
-; *
-; /
-; <=
-; equal?
-; true
-; false
-; error
+;; An Environment is a list of Bindings
+(define-type Env(Listof Binding))
 
-;; Define Binding Type
-(define-type Binding (List IdC Value))
 
-;; Define Environment Type
-(define-type Env (Listof Binding))
+;; A Binding consists of a Symbol and a Value
+(struct Binding([id : Symbol] [val : Value]) #:transparent)
+
+
+;; top-env binds primitive Values to their corresponding symbols
+(define top-env
+  (list (Binding '+ (PrimV '+))
+        (Binding '- (PrimV '-))
+        (Binding '* (PrimV '*))
+        (Binding '/ (PrimV '/))
+        (Binding '<= (PrimV '<=))
+        (Binding 'equal? (PrimV 'equal?))
+        (Binding 'true (BoolV #t))
+        (Binding 'false (BoolV #f))
+        (Binding 'error (PrimV 'error))))
 
 
 
 ;;;; ---- TOP-INTERP and INTERP ----
 
+
+
 ;; top-interp is given a program in the form of an s-expression and:
 ;; - parses the s-expression into an ExprC representing the AST
 ;; - interprets the AST into a Value representing the result of the program
 ;; - serializes the Value by printing it as a string
-#;(define (top-interp [s : Sexp]) : String
+(define (top-interp [s : Sexp]) : String
   (serialize (interp (parse s) top-env)))
-
+ 
 ;; interp
 ;; - given an ExprC and an environment
 ;; - Interprets the expression with the given environment
-;; - p sure it should return some kind of Value type - maybe NumV???
-#;(define (interp [exp : ExprC] [env : Env]) : NumV
+;; - p sure it should return some kind of Value type 
+(define (interp [exp : ExprC] [env : Env]) : Value
   (match exp
-    [(NumC n) ...]
-    [(IdC s) ...]
-    [(StrC s) ...]
-    [(IfC test-expr then-expr else-expr) ...]
-    [(LamC params body) ...]
-    [(AppC name args) ...]))
+    [(NumC n) (NumV n)]
+    #;[(IdC s) ...]
+    [(StrC s) (StrV s)]
+    #;[(IfC test-expr then-expr else-expr) ...]
+    #;[(LamC params body) ...]
+    #;[(AppC name args) ...]))
 
 
+ 
 ;;;; ---- PARSING ----
+
 
 
 ;; parse
@@ -136,6 +163,7 @@
 ;;;; ---- INTERPRETING
 
 
+
 ;; serialize
 ;; - should accept any OAZO5 value, and return a string
 ;; - For numbers, use ~v directly, so that (for instance) the serialization of
@@ -153,12 +181,6 @@
     ; primitive operators should be serialized as the string "#<primop>"
     #;[(PrimV ...) ...]))
 
-; temporarily putting serialize tests here
-(check-equal? (serialize (NumV 5)) "5")
-(check-equal? (serialize (BoolV #t)) "true")
-(check-equal? (serialize (BoolV #f)) "false")
-(check-equal? (serialize (StrV "hello")) "\"hello\"")
- 
 
 ;; Lookup function to retrieve value from environment
 #;(define (lookup [id : IdC] [env : Environment]) : Value
@@ -167,6 +189,17 @@
 
 
 ;;;; ---- TESTS ----
+
+;; interp tests
+(check-equal? (interp (NumC 5) top-env) (NumV 5))
+(check-equal? (top-interp '10) "10")
+(check-equal? (top-interp "Hello") "\"Hello\"")
+
+;; serialize tests
+(check-equal? (serialize (NumV 5)) "5")
+(check-equal? (serialize (BoolV #t)) "true")
+(check-equal? (serialize (BoolV #f)) "false")
+(check-equal? (serialize (StrV "hello")) "\"hello\"")
 
 ;; parse tests
 
