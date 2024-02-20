@@ -11,7 +11,7 @@
 ; 3) parsing and its helper functions
 ; 4) interp's helper functions
 ; 5) testing
-
+ 
 
 
 ;;;; ---- TYPE DEFINITIONS ----
@@ -271,7 +271,7 @@
        [(argInList? s seen)
         (error 'create-appc-bindings "OAZO runtime error in create-appc-bindings:
                                       multiple params of name ~e" s)]
-       [else 20 is(match args
+       [else (match args
                [(cons f-arg r-args)
                 (cons (Binding s f-arg)
                       (create-appc-bindings r-params
@@ -329,7 +329,19 @@
 (define prog11 '{let [7 <- {anon {x} : {* 2 x}}] {f 4}})
 (define prog12 '{if {<= 7 8} then {error "error test!"} else "oops"})
 (define prog13 '(parse '(+ then 4)))
-(define prog14 (quote ((anon (empty) : ((anon (cons) : ((anon (empty?) : ((anon (first) : ((anon (rest) : ((anon (Y) : ((anon (length) : ((anon (addup) : (addup (cons 3 (cons 17 empty...)))))))))))))))))))))
+(define prog14
+  (quote
+   ((anon (empty) :
+          ((anon (cons) :
+                 ((anon (empty?) :
+                        ((anon (first) :
+                               ((anon (rest) :
+                                      ((anon (Y) :
+                                             ((anon (length) :
+                                                    ((anon (addup) :
+                                                           (addup
+                                                            (cons 3
+                                                                  (cons 17 empty...)))))))))))))))))))))
 
  
 ;; top-interp tests
@@ -347,7 +359,8 @@
 (check-equal? (top-interp prog8) "7")
 (check-equal? (top-interp prog9) "8")
 (check-equal? (top-interp prog10) "24")
-; not sure what this should return tbh 
+
+; not sure what this should return tbh
 (check-equal? (top-interp prog14) "20")
 
 (check-exn #rx"OAZO runtime error in interp-primv:" (lambda () (top-interp prog4)))
