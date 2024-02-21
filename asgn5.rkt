@@ -102,7 +102,9 @@
        [(CloV params body clov-env)
         (interp body (extend-env clov-env
                                  (create-appc-bindings params
-                                                       (map (λ ([arg : ExprC]) (interp arg env)) args)
+                                                       (map (λ ([arg : ExprC])
+                                                              (interp arg env))
+                                                            args)
                                                        '())))]
        [other (error 'interp "OAZO runtime error in interp:
                               tried to apply a non function value ~e
@@ -127,7 +129,6 @@
     [(? string? str) (StrC str)]
     [(list 'if test-expr 'then then-expr 'else else-expr)
      (IfC (parse test-expr) (parse then-expr) (parse else-expr))]
-    ; need to also catch multiple bindings with the same name
     [(list 'let bindings ... body) (parse-let (cast bindings (Listof Sexp)) body)]
     [(list 'anon (list params ...) ': body)
      (LamC (parse-params params '()) (parse body))]
@@ -150,9 +151,11 @@
     ['() '()]
     [(cons (list (? symbol? name) '<- expr) r-bindings)
      (cond
-       [(argInList? name seen) (error 'find-names "OAZO syntax error in find-names: ~e defined multiple times" name)]
+       [(and (not-reserved? name) (argInList? name seen))
+        (error 'find-names "OAZO syntax error in find-names: ~e defined multiple times" name)]
        [else (cons (IdC name) (find-names r-bindings (cons name seen)))])]
     [other (error 'find-names "OAZO syntax error in find-names: expected valid let syntax, got ~e" other)]))
+
 
 
 ;; find-exprs is given a list of Sexps, bindings, and returns a list of ExprCs
@@ -202,7 +205,7 @@
     [(NumV n) (format "~v" n)]
     [(BoolV b) (cond [b "true"]
                      [else "false"])]
-    [(StrV s) s]
+    [(StrV s) (format "~v" s)]
     [(CloV params body env) "#<procedure>"]
     [(PrimV symb) "#<primop>"]))
 
@@ -239,9 +242,7 @@
                         ['equal? (cond
                                    [(and (StrV? arg1) (StrV? arg2)) (BoolV (equal? arg1 arg2))]
                                    [(and (BoolV? arg1) (BoolV? arg2)) (BoolV (equal? arg1 arg2))]
-                                   [else
-                                    (error 'interp-primv "OAZO runtime error in interp-primv:
-                                                          tried to call equal? on arguments ~e and ~e" arg1 arg2)])]
+                                   [else (BoolV #f)])]
                         ['error (call-interp-primv-error1 op)]
                         [other (call-interp-primv-error2 op)])]
     [other (call-interp-primv-error1 op)]))
@@ -329,6 +330,8 @@
 (define prog11 '{let [7 <- {anon {x} : {* 2 x}}] {f 4}})
 (define prog12 '{if {<= 7 8} then {error "error test!"} else "oops"})
 (define prog13 '(parse '(+ then 4)))
+(define prog15 '{let {+ 3 7}})
+(define prog16 '(if true then "one" else "two"))
 (define prog14
   (quote
    ((anon (empty) :
@@ -343,10 +346,10 @@
                                                             (cons 3
                                                                   (cons 17 empty...)))))))))))))))))))))
 
- 
+                                                                                
 ;; top-interp tests
 (check-equal? (top-interp '10) "10")
-(check-equal? (top-interp "Hello") "Hello")
+(check-equal? (top-interp "Hello") "\"Hello\"")
 (check-equal? (top-interp '{+ 3 4}) "7")
 (check-equal? (top-interp '{{anon {x} : {+ x 1}} 17}) "18")
 (check-equal? (top-interp '{equal? 3 {+ 1 2}}) "true")
@@ -359,17 +362,14 @@
 (check-equal? (top-interp prog8) "7")
 (check-equal? (top-interp prog9) "8")
 (check-equal? (top-interp prog10) "24")
-
-; not sure what this should return tbh
-(check-equal? (top-interp prog14) "20")
-
+(check-equal? (top-interp prog15) "10")
+(check-equal? (top-interp prog16) "\"one\"")
 (check-exn #rx"OAZO runtime error in interp-primv:" (lambda () (top-interp prog4)))
 (check-exn #rx"OAZO syntax error in parse:" (lambda () (top-interp prog5)))
 (check-exn #rx"OAZO syntax error in find-names:" (lambda () (top-interp prog11)))
 (check-exn #rx"OAZO user error:" (lambda () (top-interp prog12)))
 (check-exn #rx"OAZO syntax error in parse:" (lambda () (top-interp prog13)))
 (check-exn #rx"OAZO syntax error in parse:" (lambda () (top-interp '(parse '(+ then 4)))))
-
 
 
 ;; interp tests
@@ -437,7 +437,7 @@
 (check-equal? (serialize (NumV 5)) "5")
 (check-equal? (serialize (BoolV #t)) "true")
 (check-equal? (serialize (BoolV #f)) "false")
-(check-equal? (serialize (StrV "hello")) "hello")
+(check-equal? (serialize (StrV "hello")) "\"hello\"")
 
 
 ;; lookup tests
@@ -459,6 +459,7 @@
 (check-equal? (interp-primv 'equal? (list (NumV 3) (NumV 2))) (BoolV #f))
 (check-equal? (interp-primv 'equal? (list (StrV "heyy") (StrV "hey"))) (BoolV #f))
 (check-equal? (interp-primv 'equal? (list (BoolV #t) (BoolV #f))) (BoolV #f))
+(check-equal? (interp-primv 'equal? (list (PrimV '+) (BoolV #f))) (BoolV #f))
 (check-exn #rx"OAZO user error:" (lambda () (interp-primv 'error (list (StrV "test")))))
 (check-exn #rx"OAZO runtime error in interp-primv:" (lambda () (interp-primv '+ (list (NumV 7) (NumV 7) (NumV 7)))))
 (check-exn #rx"OAZO runtime error in interp-primv:" (lambda () (interp-primv '+ (list (NumV 7)))))
@@ -468,7 +469,6 @@
                                                                              (list (StrV "test") (StrV "test")))))
 (check-exn #rx"OAZO runtime error in interp-primv:" (lambda () (interp-primv '/ (list (NumV 7) (NumV 0)))))
 (check-exn #rx"OAZO runtime error in interp-primv:" (lambda () (interp-primv 'error (list (NumV 7) (NumV 9)))))
-(check-exn #rx"OAZO runtime error in interp-primv:" (lambda () (interp-primv 'equal? (list (PrimV '+) (BoolV #f)))))
 
 
 ; create-appc-bindings tests
@@ -499,7 +499,6 @@
 
 
 ;; parse tests
-
 (check-equal? (parse '10) (NumC 10))
 (check-equal? (parse 'doug) (IdC 'doug))
 (check-equal? (parse '"This is a string") (StrC "This is a string"))
@@ -571,8 +570,6 @@
                     (list (AppC (IdC '+)
                                 (list (NumC 9) (NumC 14)))
                           (NumC 98))))
-
-
 (check-exn #rx"OAZO syntax error in parse:" (lambda () (parse '{})))
 (check-exn #rx"OAZO syntax error in parse-params:" (lambda () (parse '{anon {7 y z} : 4})))
 (check-exn #rx"OAZO syntax error in parse-params:" (lambda () (parse '{anon {{f 5} y z} : 4})))
@@ -589,3 +586,4 @@
 (check-exn #rx"OAZO syntax error in not-reserved?" (lambda () (parse '{if <- then {+ 3 4} else {+ 5 6}})))
 (check-exn #rx"OAZO syntax error in not-reserved" (lambda () (parse '(+ then 4))))
 (check-exn #rx"OAZO syntax error in find-names" (lambda () (parse '(let (z <- (anon () : 3)) (z <- 9) (z)))))
+(check-exn #rx"OAZO syntax error in not-reserved?" (lambda () (parse '(let (: <- "") "World"))))
