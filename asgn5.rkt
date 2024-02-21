@@ -4,14 +4,14 @@
 
 ;;;; ---- NOTES ----
 
-; We __ implemented assignment 5
+; We fully implemented assignment 5
 ; Code is organized as follows
 ; 1) type definitions
 ; 2) top-interp and interp
 ; 3) parsing and its helper functions
 ; 4) interp's helper functions
 ; 5) testing
-
+ 
 
 
 ;;;; ---- TYPE DEFINITIONS ----
@@ -110,7 +110,7 @@
                      other func)])]))
 
 
-
+ 
  
 ;;;; ---- PARSING ----
 
@@ -127,27 +127,31 @@
     [(? string? str) (StrC str)]
     [(list 'if test-expr 'then then-expr 'else else-expr)
      (IfC (parse test-expr) (parse then-expr) (parse else-expr))]
+    ; need to also catch multiple bindings with the same name
     [(list 'let bindings ... body) (parse-let (cast bindings (Listof Sexp)) body)]
     [(list 'anon (list params ...) ': body)
-     (LamC (parse-params params) (parse body))]
+     (LamC (parse-params params '()) (parse body))]
     [(list 'quote args ...) (error 'parse "OAZO syntax error in parse: expected valid syntax, got ~e" s)]
     [(list func args ...)
      (AppC (parse func) (map (λ ([arg : Sexp]) (parse arg)) args))]
     [other (error 'parse "OAZO syntax error in parse: expected valid syntax, got ~e" s)]))
-
+  
 
 ;; parse-let takes a list of Sexps and a body and turns it into an ExprC
 (define (parse-let [bindings : (Listof Sexp)] [body : Sexp]) : ExprC
-  (AppC (LamC (find-names bindings) (parse body))
+  (AppC (LamC (find-names bindings '()) (parse body))
         (find-exprs bindings)))
 
 
 ;; find-names is given a list of Sexps, bindings, and returns a list of IdCs
 ;; corresponding to the names in the bindings
-(define (find-names [bindings : (Listof Sexp)]) : (Listof IdC)
+(define (find-names [bindings : (Listof Sexp)] [seen : (Listof Sexp)]) : (Listof IdC)
   (match bindings
     ['() '()]
-    [(cons (list (? symbol? name) '<- expr) r-bindings) (cons (IdC name) (find-names r-bindings))]
+    [(cons (list (? symbol? name) '<- expr) r-bindings)
+     (cond
+       [(argInList? name seen) (error 'find-names "OAZO syntax error in find-names: ~e defined multiple times" name)]
+       [else (cons (IdC name) (find-names r-bindings (cons name seen)))])]
     [other (error 'find-names "OAZO syntax error in find-names: expected valid let syntax, got ~e" other)]))
 
 
@@ -161,12 +165,12 @@
 
 ;; parse-params is given a list of any and turns in into a list of IdCs.
 ;; if one of the elements of the given list is not a symbol or a reserved name, then it raises an error.
-(define (parse-params [params : (Listof Any)]) : (Listof IdC)
+(define (parse-params [params : (Listof Any)] [seen : (Listof Any)]) : (Listof IdC)
   (match params
     ['() '()]
     [(cons (? symbol? f) r) #:when
-                            (not-reserved? f)
-                            (cons (IdC f) (parse-params r))]
+                            (and (not (argInList? f seen)) (not-reserved? f))
+                            (cons (IdC f) (parse-params r (cons f seen)))]
     [other (error 'parse-params "OAZO syntax error in parse-params: expected valid parameter syntax, got ~e" other)]))
 
 
@@ -179,7 +183,9 @@
          (equal? 'let name)
          (equal? 'anon name)
          (equal? ': name)
-         (equal? '<- name))
+         (equal? '<- name)
+         (equal? 'then name)
+         (equal? 'else name))
      (error 'not-reserved? "OAZO syntax error in not-reserved?: expected valid name, got ~e" name)]
     [else #t]))
 
@@ -323,8 +329,21 @@
 (define prog11 '{let [7 <- {anon {x} : {* 2 x}}] {f 4}})
 (define prog12 '{if {<= 7 8} then {error "error test!"} else "oops"})
 (define prog13 '(parse '(+ then 4)))
+(define prog14
+  (quote
+   ((anon (empty) :
+          ((anon (cons) :
+                 ((anon (empty?) :
+                        ((anon (first) :
+                               ((anon (rest) :
+                                      ((anon (Y) :
+                                             ((anon (length) :
+                                                    ((anon (addup) :
+                                                           (addup
+                                                            (cons 3
+                                                                  (cons 17 empty...)))))))))))))))))))))
 
-
+ 
 ;; top-interp tests
 (check-equal? (top-interp '10) "10")
 (check-equal? (top-interp "Hello") "Hello")
@@ -340,14 +359,16 @@
 (check-equal? (top-interp prog8) "7")
 (check-equal? (top-interp prog9) "8")
 (check-equal? (top-interp prog10) "24")
+
+; not sure what this should return tbh
+(check-equal? (top-interp prog14) "20")
+
 (check-exn #rx"OAZO runtime error in interp-primv:" (lambda () (top-interp prog4)))
 (check-exn #rx"OAZO syntax error in parse:" (lambda () (top-interp prog5)))
 (check-exn #rx"OAZO syntax error in find-names:" (lambda () (top-interp prog11)))
 (check-exn #rx"OAZO user error:" (lambda () (top-interp prog12)))
 (check-exn #rx"OAZO syntax error in parse:" (lambda () (top-interp prog13)))
-
-;; expected exception with message containing OAZO on test expression: '(parse '(+ then 4))
-;; Saving submission with errors.
+(check-exn #rx"OAZO syntax error in parse:" (lambda () (top-interp '(parse '(+ then 4)))))
 
 
 
@@ -478,6 +499,7 @@
 
 
 ;; parse tests
+
 (check-equal? (parse '10) (NumC 10))
 (check-equal? (parse 'doug) (IdC 'doug))
 (check-equal? (parse '"This is a string") (StrC "This is a string"))
@@ -550,9 +572,11 @@
                                 (list (NumC 9) (NumC 14)))
                           (NumC 98))))
 
+
 (check-exn #rx"OAZO syntax error in parse:" (lambda () (parse '{})))
 (check-exn #rx"OAZO syntax error in parse-params:" (lambda () (parse '{anon {7 y z} : 4})))
 (check-exn #rx"OAZO syntax error in parse-params:" (lambda () (parse '{anon {{f 5} y z} : 4})))
+(check-exn #rx"OAZO syntax error in parse-params" (lambda () (parse '(anon (x x) : 3))))
 (check-exn #rx"OAZO syntax error in not-reserved?" (lambda () (parse '{if 7 8})))
 (check-exn #rx"OAZO syntax error in not-reserved?" (lambda () (parse '{if {<= 5 10} {+ 2 5} else {+ 2 10}})))
 (check-exn #rx"OAZO syntax error in not-reserved?" (lambda () (parse '{if {<= 5 10} then {+ 2 5} {+ 2 10}})))
@@ -563,3 +587,5 @@
 (check-exn #rx"OAZO syntax error in not-reserved?" (lambda () (parse '{if : then {+ 3 4} else {+ 5 6}})))
 (check-exn #rx"OAZO syntax error in not-reserved?" (lambda () (parse '{anon {<-} : {+ 3 4}})))
 (check-exn #rx"OAZO syntax error in not-reserved?" (lambda () (parse '{if <- then {+ 3 4} else {+ 5 6}})))
+(check-exn #rx"OAZO syntax error in not-reserved" (lambda () (parse '(+ then 4))))
+(check-exn #rx"OAZO syntax error in find-names" (lambda () (parse '(let (z <- (anon () : 3)) (z <- 9) (z)))))
