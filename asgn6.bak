@@ -4,7 +4,7 @@
 
 ;;;; ---- NOTES ----
 
-; We fully implemented assignment 6
+; We fully implemented assignment 5
 ; Code is organized as follows
 ; 1) type definitions
 ; 2) top-interp and interp
@@ -21,7 +21,7 @@
 ;; an if ____ else ____ then ____ expression (IfC),
 ;; an anonymous function definition (LamC),
 ;; or a function application (AppC)
-(define-type ExprC (U NumC IdC StrC IfC LamC AppC SeqC))
+(define-type ExprC (U NumC IdC StrC IfC LamC AppC))
 
 (struct NumC ([n : Real]) #:transparent)
 (struct IdC ([s : Symbol]) #:transparent)
@@ -29,12 +29,11 @@
 (struct IfC  ([test-expr : ExprC] [then-expr : ExprC] [else-expr : ExprC]) #:transparent)
 (struct LamC ([params : (Listof IdC)] [body : ExprC]) #:transparent)
 (struct AppC ([func : ExprC] [args : (Listof ExprC)]) #:transparent)
-(struct SeqC ([exprs : (Listof ExprC)]) #:transparent)
 
- 
-;; Value is either a number, a boolean, a string, a closure, or a primitive operator, or a sequence
+
+;; Value is either a number, a boolean, a string, a closure, or a primitive operator
 (define-type Value (U NumV BoolV StrV CloV PrimV))
- 
+
 (struct NumV ([n : Real]) #:transparent)
 (struct BoolV ([b : Boolean]) #:transparent)
 (struct StrV ([s : String]) #:transparent)
@@ -61,8 +60,7 @@
         (Binding 'true (BoolV #t))
         (Binding 'false (BoolV #f))
         (Binding 'error (PrimV 'error))
-        (Binding 'println (PrimV 'println))
-        (Binding '++ (PrimV '++))))
+        (Binding 'println (PrimV 'println))))
 
 
 
@@ -78,7 +76,7 @@
 (define (top-interp [s : Sexp]) : String
   (serialize (interp (parse s) top-env)))
 
- 
+
 ;; interp
 ;; - given an ExprC and an environment
 ;; - Interprets the expression with the given environment
@@ -112,11 +110,7 @@
        [other (error 'interp "OAZO runtime error in interp:
                               tried to apply a non function value ~e
                               which was interpreted from expr ~e"
-                     other func)])]
-    [(SeqC exprs) 
-     (cond
-       [(empty? (rest exprs)) (interp (first exprs) env)]
-       [else (interp (SeqC (rest exprs)) env)])])) 
+                     other func)])]))
 
 
  
@@ -127,16 +121,12 @@
 ;; parse
 ;; - given concrete syntax in the form of an s-expression
 ;; - parses it into an ExprC
-(define (parse [s : Sexp]) : ExprC 
+(define (parse [s : Sexp]) : ExprC
   (match s
     [(? real? x) (NumC x)]
-    [(list 'seq exprs ...) 
-     (cond 
-       [(empty? exprs) (error 'parse "OAZO syntax error in parse: 'seq' requires at least one expression, got ~e" s)]
-       [else (SeqC (map parse exprs))])]
     [(? symbol? symb) #:when
                       (not-reserved? symb)
-                      (IdC symb)] 
+                      (IdC symb)]
     [(? string? str) (StrC str)]
     [(list 'if test-expr 'then then-expr 'else else-expr)
      (IfC (parse test-expr) (parse then-expr) (parse else-expr))]
@@ -196,16 +186,15 @@
     [(or (equal? 'if name)
          (equal? 'let name)
          (equal? 'anon name)
-         (equal? ': name) 
+         (equal? ': name)
          (equal? '<- name)
          (equal? 'then name)
-         (equal? 'else name)
-         (equal? 'seq name))
+         (equal? 'else name))
      (error 'not-reserved? "OAZO syntax error in not-reserved?: expected valid name, got ~e" name)]
     [else #t]))
 
 
- 
+
 
 ;;;; ---- INTERPRETING
 
@@ -222,23 +211,12 @@
     [(PrimV symb) "#<primop>"]))
 
 
-;; like serialize - but does not format strings
-(define (sub-serialize [val : Value]) : String
-  (match val
-    [(NumV n) (format "~v" n)]
-    [(BoolV b) (cond [b "true"]
-                     [else "false"])]
-    [(StrV s) s]
-    [(CloV params body env) "#<procedure>"]
-    [(PrimV symb) "#<primop>"]))
- 
-
 ;; println
 ;; println is given a string then prints that string to stdout, followed by a newline
 (define (println [s : String]) : BoolV
   (cond
     [(void? (display (string-append s "\n"))) (BoolV #t)]))
-  
+
 
 ;; Lookup function to retrieve value from environment
 (define (lookup [s : Symbol] [env : Environment]) : Value
@@ -253,14 +231,12 @@
 ;; a list of values corresponding to the arguments said function is being called with.
 ;; it then evaluates the primitive operator with the given arguments
 (define (interp-primv [op : Symbol] [args : (Listof Value)]): Value
-  (match args 
+  (match args
     [(list arg1) (match op
                    ['error (error 'user-error "OAZO user error: ~e" (serialize arg1))]
-                   ['++ (coerce-strings args)]
                    ['println (println (serialize arg1))]
                    [other (call-interp-primv-error1 op)])]
     [(list (NumV n1) (NumV n2)) (match op
-                                  ['++ (coerce-strings args)]
                                   ['+ (NumV (+ n1 n2))]
                                   ['- (NumV (- n1 n2))]
                                   ['* (NumV (* n1 n2))]
@@ -272,24 +248,14 @@
                                   ['equal? (BoolV (equal? n1 n2))]
                                   [other (call-interp-primv-error1 op)])]
     [(list arg1 arg2) (match op
-                        ['++ (coerce-strings args)]
                         ['equal? (cond
                                    [(and (StrV? arg1) (StrV? arg2)) (BoolV (equal? arg1 arg2))]
                                    [(and (BoolV? arg1) (BoolV? arg2)) (BoolV (equal? arg1 arg2))]
                                    [else (BoolV #f)])]
                         ['error (call-interp-primv-error1 op)]
                         [other (call-interp-primv-error2 op)])]
-    [(list args ...)
-     (match op
-       ['++ (coerce-strings args)]
-       [other (call-interp-primv-error2 op)])]
-    #;[other (call-interp-primv-error1 op)]))
-  
-;; takes in a list of Values
-;; - returns a StrV consisting of the concatenation of all values in string form
-(define (coerce-strings [args : (Listof Value)]): StrV
-  (StrV (apply string-append (map sub-serialize args))))
- 
+    [other (call-interp-primv-error1 op)]))
+
 
 ;; call-interp-primv-error1 is a helper function which calls an error
 ;; for interp-primv when there are the wrong number of arguments
@@ -342,13 +308,12 @@
     ['() start]
     [(cons f-binding r-bindings) (cons f-binding (extend-env start r-bindings))]))
 
- 
 
  
+
 ;;;; ---- TESTS ----
 
-
-;; definitions for testing 
+;; definitions for testing
 (define prog1 '{{anon {compose add1} :
                       {{anon {add2} :
                              {add2 99}}   
@@ -386,19 +351,14 @@
                                                     ((anon (addup) :
                                                            (addup
                                                             (cons 3
-                                                                   (cons 17 empty...)))))))))))))))))))))
+                                                                  (cons 17 empty...)))))))))))))))))))))
 (define prog15 '{let {+ 3 7}})
 (define prog16 '{if true then "one" else "two"})
 (define prog17 '{println {if true then "one" else "two"}})
 (define prog18 '{println {anon {x} : {* 3 x}}})
 (define prog19 '{println {let {+ 3 4}}})
-(define prog20 '{seq
-                 {println "What is your favorite integer between 6 and 7?"}
-                 {let {your-number <- {read-num}}
-                   {println {++ "Interesting. You picked " your-number ". good choice!"}}}})
- 
 
-                                                                                  
+                                                                                
 ;; top-interp tests
 (check-equal? (top-interp '10) "10")
 (check-equal? (top-interp "Hello") "\"Hello\"")
@@ -406,12 +366,6 @@
 (check-equal? (top-interp '{{anon {x} : {+ x 1}} 17}) "18")
 (check-equal? (top-interp '{equal? 3 {+ 1 2}}) "true")
 (check-equal? (top-interp '{equal? 3 {+ 3 2}}) "false")
-(check-equal? (top-interp '{println {++ "Hello" "World" "again"}}) "true")
-(check-equal? (top-interp '{println {++ "Hiya"}}) "true")
-(check-equal? (top-interp '{println {++ "Hey" "again"}}) "true")
-(check-equal? (top-interp '{println {++ 5 7}}) "true")
-(check-equal? (interp (AppC (IdC '++) (list (StrC "hello") (StrC "world"))) top-env) (StrV "helloworld"))
-(check-equal? (interp (parse '(++ "one" " " "two" " " "three")) top-env) (StrV "one two three"))
 (check-equal? (top-interp prog1) "101")
 (check-equal? (top-interp prog2) "#<procedure>")
 (check-equal? (top-interp prog3) "#<primop>")
@@ -425,21 +379,13 @@
 (check-equal? (top-interp prog17) "true")
 (check-equal? (top-interp prog18) "true")
 (check-equal? (top-interp prog19) "true")
-(check-equal? (top-interp '{seq {+ 2 3}}) "5")
-(check-equal? (top-interp '{seq {println "Hello"} {println "World"}}) "true") 
-(check-equal? (top-interp '{seq {+ 2 3} {+ 4 5}}) "9")
-(check-equal? (top-interp '(++ "one" " " "two" " " "three")) "\"one two three\"")
-(check-equal? (top-interp '(++ "hello" "world")) "\"helloworld\"")
-#;(check-equal? (top-interp prog20) )
-
-(check-exn #rx"OAZO syntax error in parse:" (lambda () (top-interp '{seq})))
 (check-exn #rx"OAZO runtime error in interp-primv:" (lambda () (top-interp prog4)))
 (check-exn #rx"OAZO syntax error in parse:" (lambda () (top-interp prog5)))
 (check-exn #rx"OAZO syntax error in find-names:" (lambda () (top-interp prog11)))
 (check-exn #rx"OAZO user error:" (lambda () (top-interp prog12)))
 (check-exn #rx"OAZO syntax error in parse:" (lambda () (top-interp prog13)))
 (check-exn #rx"OAZO syntax error in parse:" (lambda () (top-interp '(parse '(+ then 4)))))
- 
+
 
 ;; interp tests
 (check-equal? (interp (NumC 5) top-env) (NumV 5))
@@ -503,9 +449,9 @@
 
 
 
-  
 
-;; parse tests 
+
+;; parse tests
 (check-equal? (parse '10) (NumC 10))
 (check-equal? (parse 'doug) (IdC 'doug))
 (check-equal? (parse '"This is a string") (StrC "This is a string"))
@@ -569,25 +515,15 @@
                                       (list (AppC (IdC '+) (list (IdC 'w) (IdC 'x)))
                                             (AppC (IdC '+) (list (IdC 'y) (IdC 'z)))))))))
 (check-equal? (parse '{let
-                        {z <- {+ 9 14}} 
-                        {y <- 98} 
+                        {z <- {+ 9 14}}
+                        {y <- 98}
                         {+ z y}})
               (AppC (LamC (list (IdC 'z) (IdC 'y))
                           (AppC (IdC '+)
                                 (list (IdC 'z) (IdC 'y))))
                     (list (AppC (IdC '+)
                                 (list (NumC 9) (NumC 14)))
-                          (NumC 98)))) 
-    
-(check-equal? (parse '{seq {+ 2 3}}) (SeqC (list (AppC (IdC '+) (list (NumC 2) (NumC 3))))))
-(check-equal? (parse '{seq {println "Hello"} {println "World"}})
-              (SeqC (list (AppC (IdC 'println) (list (StrC "Hello")))
-                          (AppC (IdC 'println) (list (StrC "World"))))))
-(check-equal? (parse '{seq 2 3}) (SeqC (list (NumC 2) (NumC 3))))
-(check-equal? (parse '(++ "hello" "world"))
-                (AppC (IdC '++) (list (StrC "hello") (StrC "world"))))
-
-   
+                          (NumC 98))))
 (check-exn #rx"OAZO syntax error in parse:" (lambda () (parse '{})))
 (check-exn #rx"OAZO syntax error in parse-params:" (lambda () (parse '{anon {7 y z} : 4})))
 (check-exn #rx"OAZO syntax error in parse-params:" (lambda () (parse '{anon {{f 5} y z} : 4})))
@@ -605,8 +541,6 @@
 (check-exn #rx"OAZO syntax error in not-reserved" (lambda () (parse '(+ then 4))))
 (check-exn #rx"OAZO syntax error in find-names" (lambda () (parse '(let (z <- (anon () : 3)) (z <- 9) (z)))))
 (check-exn #rx"OAZO syntax error in not-reserved?" (lambda () (parse '(let (: <- "") "World"))))
-(check-exn #rx"OAZO syntax error in parse:" (lambda () (parse '{seq})))
-#;(check-exn #rx"OAZO syntax error in parse:" (lambda () (parse '(seq {2}))))
 
 
 ;; serialize tests
@@ -621,7 +555,7 @@
 (check-equal? (lookup '- top-env) (PrimV '-))
 (check-exn #rx"OAZO runtime error in lookup:" (lambda () (lookup 'nope top-env)))
 
- 
+
 ;; interp-primv tests
 (check-equal? (interp-primv '+ (list (NumV 7) (NumV 8))) (NumV 15))
 (check-equal? (interp-primv '- (list (NumV 7) (NumV 3))) (NumV 4))
