@@ -113,11 +113,7 @@
        [other (error 'interp "OAZO runtime error in interp:
                               tried to apply a non function value ~e
                               which was interpreted from expr ~e"
-                     other func)])]
-    #;[(SeqC exprs) 
-     (cond
-       [(empty? (rest exprs)) (interp (first exprs) env)]
-       [else (interp (SeqC (rest exprs)) env)])])) 
+                     other func)])])) 
 
 
  
@@ -131,10 +127,6 @@
 (define (parse [s : Sexp]) : ExprC 
   (match s
     [(? real? x) (NumC x)]
-    #;[(list 'seq exprs ...) 
-     (cond 
-       [(empty? exprs) (error 'parse "OAZO syntax error in parse: 'seq' requires at least one expression, got ~e" s)]
-       [else (SeqC (map parse exprs))])]
     [(? symbol? symb) #:when
                       (not-reserved? symb)
                       (IdC symb)] 
@@ -255,7 +247,10 @@
 (define (interp-primv [op : Symbol] [args : (Listof Value)]): Value
   (match args
     ['() (match op
-           ['read-num (match (string->number (cast (read-line) String))
+           ['read-num (match (string->number (cast (match (read-line)
+                                                     [(? string? s) s]
+                                                     [other "-1"])
+                                                   String))
                         [(? complex? c) (NumV (cast c Real))]
                         [other (error 'interp-primv "OAZO runtime error in interp-primv:
                                                      user input was not a real number, instead given ~e"
@@ -418,6 +413,32 @@
 (define prog27 '{seq
                  {println "Please enter a string to test an unsuccessful read-num call"}
                  {println {++ "You picked: " {read-num}}}})
+(define prog28 '{seq
+                 {println {++ "Please don't enter anything, and press the enter button"
+                              "to test an unsuccessful read-num call"}}
+                 {println {++ "You picked: " {read-num}}}})
+(define prog30 '{let {empty <- 15}
+                  {let {empty? <- {anon (x) : {equal? x empty}}}
+                    {cons <- {anon {f r} :
+                                   {anon {key} :
+                                         {if {equal? key 0}
+                                             then
+                                             f
+                                             else
+                                             r}}}}
+                    {first <- {anon {pair} :
+                                    {pair 0}}}
+                    {rest <- {anon {pair} :
+                                   {pair 1}}}
+                    {let {sum-list <- {anon (l self) :
+                                            {if {empty? l}
+                                                then
+                                                0
+                                                else
+                                                {+ {first l}
+                                                   {self {rest l} self}}}}}
+                      {my-list <- {cons 3 {cons 24 {cons 8 empty}}}}
+                      {sum-list my-list sum-list}}}})
 
  
 
@@ -455,6 +476,7 @@
 (check-equal? (top-interp prog24) "9")
 (check-equal? (top-interp prog25) "true")
 (check-equal? (top-interp prog26) "true")
+(check-equal? (top-interp prog30) "35")
 (check-exn #rx"OAZO runtime error in interp-primv:" (lambda () (top-interp prog4)))
 (check-exn #rx"OAZO syntax error in parse:" (lambda () (top-interp prog5)))
 (check-exn #rx"OAZO syntax error in find-names:" (lambda () (top-interp prog11)))
@@ -463,6 +485,7 @@
 (check-exn #rx"OAZO syntax error in parse:" (lambda () (top-interp prog13.5)))
 (check-exn #rx"OAZO runtime error in interp-primv:" (lambda () (top-interp '{seq})))
 (check-exn #rx"OAZO runtime error in interp-primv:" (lambda () (top-interp prog27)))
+(check-exn #rx"OAZO runtime error in interp-primv:" (lambda () (top-interp prog28)))
  
 
 ;; interp tests
