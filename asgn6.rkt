@@ -11,9 +11,9 @@
 ; 3) parsing and its helper functions
 ; 4) interp's helper functions
 ; 5) testing
+
+
  
-
-
 ;;;; ---- TYPE DEFINITIONS ----
 
 
@@ -196,14 +196,14 @@
      (error 'not-reserved? "OAZO syntax error in not-reserved?: expected valid name, got ~e" name)]
     [else #t]))
 
+ 
+    
+
+;;;; ---- INTERPRETING 
 
  
-
-;;;; ---- INTERPRETING
-
-
 ;; serialize
-;; - should accept any OAZO5 value, and return a string
+;; - should accept any OAZO5 value, and return a string 
 (define (serialize [val : Value]) : String
   (match val
     [(NumV n) (format "~v" n)]
@@ -242,27 +242,27 @@
 
 
 ;; interp-primv is given a symbol corresponding to a primitive function and
-;; a list of values corresponding to the arguments said function is being called with.
+;; a list of values corresponding to the arguments said function is being called with. 
 ;; it then evaluates the primitive operator with the given arguments
 (define (interp-primv [op : Symbol] [args : (Listof Value)]): Value
-  (match args
-    ['() (match op
-           ['read-num (match (string->number (cast (match (read-line)
-                                                     [(? string? s) s]
+  (match args 
+    ['() (match op 
+           ['read-num (match (string->number (cast (match (read-line) 
+                                                     [(? string? s) s] 
                                                      [other "-1"])
                                                    String))
-                        [(? complex? c) (NumV (cast c Real))]
+                        [(? complex? c) (NumV (cast c Real))] 
                         [other (error 'interp-primv "OAZO runtime error in interp-primv:
                                                      user input was not a real number, instead given ~e"
                                       other)])]
-           [other (call-interp-primv-error1 op)])]
+           [other (call-interp-primv-error1 op)])] 
     [(list arg1) (match op
                    ['error (error 'user-error "OAZO user error: ~e" (serialize arg1))]
                    ['++ (coerce-strings args)]
                    ['println (println (serialize arg1))]
                    ['seq arg1]
                    [other (call-interp-primv-error1 op)])]
-    [(list (NumV n1) (NumV n2)) (match op
+    [(list (NumV n1) (NumV n2)) (match op 
                                   ['+ (NumV (+ n1 n2))]
                                   ['- (NumV (- n1 n2))]
                                   ['* (NumV (* n1 n2))]
@@ -296,7 +296,7 @@
 ;; - returns a StrV consisting of the concatenation of all values in string form
 (define (coerce-strings [args : (Listof Value)]): StrV
   (StrV (apply string-append (map sub-serialize args))))
- 
+  
 
 ;; call-interp-primv-error1 is a helper function which calls an error
 ;; for interp-primv when there are the wrong number of arguments
@@ -349,7 +349,46 @@
     ['() start]
     [(cons f-binding r-bindings) (cons f-binding (extend-env start r-bindings))]))
 
+
+
+;;;; ---- EXAMPLE PROGRAMS ----
  
+;; Textbook Simulator
+(define textbook-simulator
+  '{seq
+    {println "Welcome to TextBook Simulator!"}
+    {println "How many pages will you read today?"} 
+    {let [read-textbook <- {anon {self pages-read} :
+                                 {seq
+                                  {let [reading <- {read-num}]
+                                    {if {<= reading 0} 
+                                       then {println "Feeling lazy today huh"}
+                                       else {seq
+                                             {println {++ "You have read " {+ pages-read reading} " pages so far"}}
+                                             {println "You feel slightly more tired"}
+                                             {println "How many more pages will you read?"}
+                                             {self self {+ pages-read reading}}}}}}}]
+      {read-textbook read-textbook 0}}}) 
+  
+;; guessing game
+;; - no random in OAZO so just incrementing number each time. 
+(define guessing-game  
+  '{seq
+    {println "Welcome to the Guessing Game! Try to guess the secret number between 1 and 10."}
+    {let [guesses-left <- 3]
+        {let [play-game <- {anon {self remaining-guesses secret-number} : 
+                  {if {<= remaining-guesses 0}
+                      then {println {++ "Game over! The secret number was: " secret-number}}
+                      else {let [user-guess <- {read-num}]
+                             {if {equal? user-guess secret-number}
+                                then {println {++ "Congratulations! You guessed the secret number: " secret-number "."}}
+                                else {seq
+                                      {println {++ "Wrong guess! You have " {- remaining-guesses 1} " guesses left."}}
+                                      {self self {- remaining-guesses 1} {+ secret-number 1}}}}}}}]
+          {play-game play-game guesses-left 4}}}})
+
+#;(top-interp textbook-simulator) 
+(top-interp guessing-game) 
 
  
 ;;;; ---- TESTS ----
