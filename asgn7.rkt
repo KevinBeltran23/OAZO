@@ -3,7 +3,15 @@
 
 ;;;; ---- NOTES ----
 
-; We fully implemented assignment 5
+; currently stripped down language to work only with binary primitive operators
+; we need to implement the store passing structure for this functionality first
+; then we can build upon that once store passing works for +, -, *, etc...
+
+; we will need to modify lookup to work with stores
+; Check to make sure that each store is used exactly once with the exception of the mutation operations added later
+
+
+; We ____ implemented assignment 7
 ; Code is organized as follows
 ; 1) type definitions
 ; 2) top-interp and interp
@@ -84,6 +92,7 @@ Expr	 	=	 	Num
 
 
 ;; An Environment is a list of Bindings
+;; - Change the Env type to map names to locations
 (define-type Environment(Listof Binding))
 
 
@@ -104,7 +113,15 @@ Expr	 	=	 	Num
         (Binding 'error (PrimV 'error))))
 
 
+;; A Store is a list of Cells
+(define-type Store (Listof Cell))
 
+
+;; A Cell consists of a location and a value
+(define-type-alias Location Real)
+(struct Cell([location : Location] [val : Value]) #:transparent)
+
+ 
 
 
 ;;;; ---- TOP-INTERP and INTERP ----
@@ -121,40 +138,44 @@ Expr	 	=	 	Num
 ;; interp
 ;; - given an ExprC and an environment
 ;; - Interprets the expression with the given environment
-;; - p sure it should return some kind of Value type 
+;; - p sure it should return some kind of Value type
+
+;  Choose a representation for a Value-combined-with-store,
+;  and change the type of the interp function so that it accepts a store and returns a Value-combined-with-store
+; Rewrite the interp rules for numbers and primitive applications so
+; that they thread the store through the computation as they should.
+
 (define (interp [exp : ExprC] [env : Environment]) : Value
   (match exp
     [(NumC n) (NumV n)]
     [(IdC s) (lookup s env)]
-    [(StrC s) (StrV s)]
-    [(IfC test-expr then-expr else-expr)
+    #;[(StrC s) (StrV s)]
+    #;[(IfC test-expr then-expr else-expr)
      (match (interp test-expr env)
        [(BoolV #t) (interp then-expr env)]
        [(BoolV #f) (interp else-expr env)]
        [other (error 'interp "OAZO runtime error in interp:
                               comparison ~e returned non-boolean value of ~e"
                      test-expr other)])]
-    [(LamC params body)
+    #;[(LamC params body)
      (CloV params
-           body
+           body 
            env)]
     [(AppC func args)
      (match (interp func env)
        [(PrimV s) (interp-primv s (map (λ ([arg : ExprC]) (interp arg env)) args))]
-       [(CloV params body clov-env)
+       #;[(CloV params body clov-env)
         (interp body (extend-env clov-env
                                  (create-appc-bindings params
                                                        (map (λ ([arg : ExprC])
                                                               (interp arg env))
                                                             args)
                                                        '())))]
-       [other (error 'interp "OAZO runtime error in interp:
-                              tried to apply a non function value ~e
-                              which was interpreted from expr ~e"
-                     other func)])]))
-
-
+       [other (error 'interp "OAZO unimplemented feature in ~e" other)])]
+    [other (error 'interp "OAZO unimplemented feature in ~e" other)]))
  
+ 
+  
  
 ;;;; ---- PARSING ----
 
@@ -235,7 +256,7 @@ Expr	 	=	 	Num
     [else #t]))
 
 
-
+ 
 
 ;;;; ---- INTERPRETING
 
@@ -340,6 +361,12 @@ Expr	 	=	 	Num
   (match new
     ['() start]
     [(cons f-binding r-bindings) (cons f-binding (extend-env start r-bindings))]))
+
+;;;; ---- Testing ----
+ 
+(check-equal? (top-interp '{+ 3 4}) "7")
+(check-exn #rx"OAZO unimplemented feature" (lambda () (top-interp '{{anon {x} : {+ 3 x}} 7})))
+
 
 
 
