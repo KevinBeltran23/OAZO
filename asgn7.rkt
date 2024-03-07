@@ -205,12 +205,6 @@ Expr	 	=	 	Num
                       (extend-env clov-env
                                   estore-env)
                       estore-store)])])]
-       #;(interp body
-                 (extend-env clov-env
-                             (create-appc-bindings params
-                                                   vls-list
-                                                   '()))
-                 vls-store)
        #;[(CloV params body clov-env)
         (interp body (extend-env clov-env
                                   (create-appc-bindings params
