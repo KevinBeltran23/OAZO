@@ -86,20 +86,29 @@ Expr	 	=	 	Num
 ;; A Binding consists of a Symbol and a Location
 (struct Binding([id : Symbol] [location : Integer]) #:transparent)
 
-;; A Store is a list of Cells
+
+;; A Store is a list of Cells and an integer representing the length of the store
 (struct Store ([cells : (Listof Cell)] [length : Integer]) #:transparent)
+
 
 ;; A Cell consists of a location (Integer) and a val (Value)
 (struct Cell([location : Integer] [val : Value]) #:transparent)
 
-;; A VStore is a value combined with a store
+
+;; A VStore is a value combined with a Store
 (struct VStore([val : Value] [sto : Store]) #:transparent)
 
-; A VListStore is a list of values combined with a store
+
+; A VListStore is a list of values combined with a Store
 (struct VListStore([args : (Listof Value)] [sto : Store]) #:transparent)
 
-; An IStore is a base lcoation combined with a store
-(struct IStore ([store : Store] [base : Integer] ) #:transparent)
+
+; An IStore is  a base lcoation (Integer) combined with a Store 
+(struct IStore([base : Integer] [store : Store]) #:transparent)
+
+
+; An EStore is an Environment combined with a Store
+(struct EStore([env : Environment] [store : Store]) #:transparent)
 
 
 ;; top-env binds primitive Values to their corresponding symbols
@@ -187,15 +196,21 @@ Expr	 	=	 	Num
     [(AppC func args) 
      (match (interp func env store)
        [(VStore (PrimV s) new-store) (interp-primv s (interp-args args env new-store '()))]
-       #;[(VStore (CloV params body clov-env) new-store)
+       [(VStore (CloV params body clov-env) new-store)
         (match (interp-args args env new-store '())
-                  [(VListStore vls-list vls-store)
-                   (interp body
-                           (extend-env clov-env
-                                       (create-appc-bindings params
-                                                             vls-list
-                                                             '()))
-                           vls-store)])]
+          [(VListStore vls-list vls-store)
+           (match (create-appc-bindings params vls-list '() vls-store '())
+             [(EStore estore-env estore-store)
+              (interp body
+                      (extend-env clov-env
+                                  estore-env)
+                      estore-store)])])]
+       #;(interp body
+                 (extend-env clov-env
+                             (create-appc-bindings params
+                                                   vls-list
+                                                   '()))
+                 vls-store)
        #;[(CloV params body clov-env)
         (interp body (extend-env clov-env
                                   (create-appc-bindings params
@@ -335,13 +350,13 @@ Expr	 	=	 	Num
 ;; Interprets a list of ExprC's and returns a list of Values combined with a new Store
 (define (interp-args [args : (Listof ExprC)] [env : Environment] [store : Store] [vals : (Listof Value)]) : VListStore
   (match args
-    ['() (VListStore (reverse-list vals '()) store)]
+    ['() (VListStore (cast (reverse-list vals '()) (Listof Value)) store)]
     [(cons f r) (match (interp f env store)
                   [(VStore v s) (interp-args r env s (cons v vals))])]))
  
 
 ;; Reverses a list
-(define (reverse-list [input : (Listof Value)] [output : (Listof Value)]) : (Listof Value)
+(define (reverse-list [input : (Listof Any)] [output : (Listof Any)]) : (Listof Any)
   (match input
     ['() output]
     [(cons f r) (reverse-list r (cons f output))]))
@@ -372,7 +387,7 @@ Expr	 	=	 	Num
                                   ['arr (cond
                                           [(integer? n1)
                                            (match (allocate store n1 (NumV n2))
-                                             [(IStore new-store base) (VStore (ArrayV base (cast n1 Integer)) new-store)])]
+                                             [(IStore base new-store) (VStore (ArrayV base (cast n1 Integer)) new-store)])]
                                           [else (call-interp-primv-error2 op)])]
                                   ['num-eq? (VStore (BoolV (equal? n1 n2)) store)]
                                   [other (call-interp-primv-error1 op)])]
@@ -434,10 +449,10 @@ Expr	 	=	 	Num
 
 ;; create-appc-bindings is given a list of IdC's, params, a list of Value's, args, and an empty list, seen
 ;; and creates a list of bindings, each binding corresponding to a name in params and a value in args.
-#;(define (create-appc-bindings [params : (Listof IdC)] [args : (Listof Value)] [seen : (Listof Symbol)]) : Environment
+(define (create-appc-bindings [params : (Listof IdC)] [args : (Listof Value)] [seen : (Listof Symbol)] [input-store : Store] [build-env : Environment]) : EStore
   (match params
     ['() (match args
-           ['() '()]
+           ['() (EStore (cast (reverse-list build-env '()) Environment) input-store)]
            [other (error 'create-appc-bindings "OAZO runtime error in create-appc-bindings: too many args")])]
     [(cons (IdC s) r-params)
      (cond 
@@ -446,7 +461,11 @@ Expr	 	=	 	Num
                                       multiple params of name ~e" s)]
        [else (match args
                [(cons f-arg r-args)
-                (cons (Binding s f-arg)
+                (match (allocate input-store 1 f-arg)
+                  [(IStore base new-store)
+                   (create-appc-bindings r-params r-args (cons s seen) new-store (cons (Binding s base) build-env))])
+                #;(create-appc-bindings r-params r-args (cons s seen) (add2input-store) (add2build-env))
+                #;(cons (Binding s f-arg)
                       (create-appc-bindings r-params
                                             r-args
                                             (cons s seen)))]
@@ -489,7 +508,7 @@ Expr	 	=	 	Num
     [(and (integer? num) (> num 0))
      (match store
        [(Store cells length)
-        (IStore (Store (allocate-helper cells (cast num Integer) val length) (cast (+ length num) Integer)) length)])]
+        (IStore length (Store (allocate-helper cells (cast num Integer) val length) (cast (+ length num) Integer)))])]
     [else (error 'allocate "OAZO runtime error in allocate: tried to allocate fewer than 1 cell")]))
 
 
@@ -613,6 +632,30 @@ Expr	 	=	 	Num
 (define prog10 '{str-eq? "bazinga" "bazoinga"})
 (define prog11 '{num-eq? 6 {+ 4 2}})
 (define prog12 '{num-eq? 6 {+ 4 4}})
+(define prog13 '{{anon {x} : {+ 3 x}} 7})
+(define prog14 '{{anon {compose add1} :
+                       {{anon {add2} :
+                              {add2 99}}   
+                        {compose add1 add1}}}
+                 {anon {f g} :
+                       {anon {x} :
+                             {f {g x}}}}
+                 {anon {x} :
+                       {+ x 1}}})
+(define prog15 '{{anon {argNum} :
+                        {{anon {doubleFunc} :
+                               {{anon {two} :
+                                      {{anon {one} :
+                                             {num-eq? {{one doubleFunc} {{two doubleFunc} argNum}}
+                                                      {* 2 {* 2 {* 2 argNum}}}}}
+                                       {anon {f1} :
+                                             {anon {a1} :
+                                                   {f1 a1}}}}}
+                                {anon {f2} :
+                                      {anon {a2} :
+                                            {f2 {f2 a2}}}}}}
+                         {anon {x} : {* 2 x}}}}
+                  579}) 
 
   
 ;; top-interp tests
@@ -633,9 +676,11 @@ Expr	 	=	 	Num
 (check-equal? (top-interp prog10) "false")
 (check-equal? (top-interp prog11) "true")
 (check-equal? (top-interp prog12) "false")
+(check-equal? (top-interp prog13) "10")
+(check-equal? (top-interp prog14) "101")
+(check-equal? (top-interp prog15) "true")
 (check-exn #rx"OAZO runtime error in allocate" (lambda () (top-interp '{arr 0 79})))
 (check-exn #rx"OAZO runtime error in allocate" (lambda () (top-interp '{arr -1 79})))
-(check-exn #rx"OAZO unimplemented feature" (lambda () (top-interp '{{anon {x} : {+ 3 x}} 7})))
 (check-exn #rx"OAZO runtime error in interp-primv" (lambda () (top-interp prog5)))
 (check-exn #rx"OAZO runtime error in interp-primv" (lambda () (top-interp prog6)))
 (check-exn #rx"OAZO runtime error in interp-primv" (lambda () (top-interp prog7)))
@@ -721,8 +766,8 @@ Expr	 	=	 	Num
 
 ;; allocate tests
 
-(check-equal? (allocate test-store1 4 (NumV 3)) (IStore test-store2 2))
-(check-equal? (allocate (Store '() 0) 3 (StrV "test")) (IStore test-store3 0))
+(check-equal? (allocate test-store1 4 (NumV 3)) (IStore 2 test-store2))
+(check-equal? (allocate (Store '() 0) 3 (StrV "test")) (IStore 0 test-store3))
 (check-exn #rx"OAZO runtime error in allocate" (lambda () (allocate test-store1 0 (NumV 3))))
 
 
