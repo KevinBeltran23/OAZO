@@ -10,7 +10,8 @@
 ; 2) top-interp and interp
 ; 3) parsing and its helper functions
 ; 4) interp's helper functions
-; 5) testing
+; 5) example programs
+; 6) testing
 
 
  
@@ -351,8 +352,10 @@
 
 
 
+
 ;;;; ---- EXAMPLE PROGRAMS ----
- 
+
+
 ;; Textbook Simulator
 (define textbook-simulator
   '{seq
@@ -370,7 +373,8 @@
                                              {self self {+ pages-read reading}}}}}}}]
       {read-textbook read-textbook 0}}}) 
   
-;; guessing game
+
+;; Guessing Game
 ;; - no random in OAZO so just incrementing number each time. 
 (define guessing-game  
   '{seq
@@ -387,10 +391,14 @@
                                       {self self {- remaining-guesses 1} {+ secret-number 1}}}}}}}]
           {play-game play-game guesses-left 4}}}})
 
-#;(top-interp textbook-simulator) 
-(top-interp guessing-game) 
 
- 
+;(top-interp guessing-game)
+(check-equal? (top-interp guessing-game) "true")
+(check-equal? (top-interp textbook-simulator) "true")
+
+
+
+
 ;;;; ---- TESTS ----
 
 
@@ -453,7 +461,7 @@
                  {println "Please enter a string to test an unsuccessful read-num call"}
                  {println {++ "You picked: " {read-num}}}})
 (define prog28 '{seq
-                 {println {++ "Please don't enter anything, and press the enter button"
+                 {println {++ "Please don't enter anything, and press the enter button "
                               "to test an unsuccessful read-num call"}}
                  {println {++ "You picked: " {read-num}}}})
 (define prog30 '{let {empty <- 15}

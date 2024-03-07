@@ -81,6 +81,7 @@ Expr	 	=	 	Num
 (define-type Environment(Listof Binding))
 
 
+;; A Binding consists of a Symbol and a Value
 ;; A Binding consists of a Symbol and a Location
 (struct Binding([id : Symbol] [location : Location]) #:transparent)
 
@@ -102,14 +103,11 @@ Expr	 	=	 	Num
         (Binding '- (PrimV '-))
         (Binding '* (PrimV '*))
         (Binding '/ (PrimV '/))
-        (Binding 'num-eq? (PrimV 'num-eq?))
-        (Binding 'str-eq? (PrimV 'str-eq?))
         (Binding '<= (PrimV '<=))
-        (Binding 'substring 7)
-        (Binding 'arr (PrimV 'arr))
-        (Binding 'aref (PrimV 'aref))
-        (Binding 'aset (PrimV 'aset))
-        (Binding 'alen (PrimV 'alen))))
+        (Binding 'equal? (PrimV 'equal?))
+        (Binding 'true (BoolV #t))
+        (Binding 'false (BoolV #f))
+        (Binding 'error (PrimV 'error))))
 
 (define top-env
   (list (Binding '+ 0)
@@ -176,11 +174,7 @@ Expr	 	=	 	Num
            env)]  
     [(AppC func args) 
      (match (VStore-val (interp func env store)) 
-       [(PrimV s) (interp-primv s
-                                (map (λ ([arg : ExprC])
-                                       (VStore-val (interp arg env store)))
-                                     args)
-                                store)]
+       [(PrimV s) (interp-primv s (map (λ ([arg : ExprC]) (VStore-val (interp arg env store))) args) store)]
        #;[(CloV params body clov-env)
         (interp body (extend-env clov-env
                                  (create-appc-bindings params
