@@ -444,7 +444,7 @@
 (check-equal? (lookup '+ top-env) (PrimV '+))
 (check-equal? (lookup '- top-env) (PrimV '-))
 (check-exn #rx"OAZO runtime error in lookup:" (lambda () (lookup 'nope top-env)))
-
+ 
 
 ;; interp-primv tests
 (check-equal? (interp-primv '+ (list (NumV 7) (NumV 8))) (NumV 15))
