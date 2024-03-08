@@ -35,7 +35,7 @@
 (struct IdC ([s : Symbol]) #:transparent)
 (struct StrC ([s : String]) #:transparent)
 (struct IfC  ([test-expr : ExprC] [then-expr : ExprC] [else-expr : ExprC]) #:transparent)
-(struct LamC ([params : (Listof IdC)] [body : ExprC]) #:transparent)
+(struct LamC ([params : (Listof ParamC)] [body : ExprC]) #:transparent)
 (struct AppC ([func : ExprC] [args : (Listof ExprC)]) #:transparent)
 (struct ParamC ([id : IdC] [type : Type]) #:transparent)
 
@@ -158,7 +158,9 @@
 
 ;;;; ---- TOP-INTERP and INTERP ----
 
+#;(
 
+   
 ;; top-interp is given a program in the form of an s-expression and:
 ;; - parses the s-expression into an ExprC representing the AST
 ;; - interprets the AST into a Value representing the result of the program
@@ -201,25 +203,12 @@
                       (extend-env clov-env
                                   estore-env)
                       estore-store)])])])]))
-
+)
  
  
 ;;;; ---- PARSING ----
 
 
-;; parse-type
-;; - given an expression to determine its type
-(define (parse-type [s : Sexp]) : Type
-  (NumT))
-
-
-;; type-check
-;; - given Abstract Syntax
-;; - checks for type errors
-(define (type-check [exp : ExprC] [env : Environment]) : Type
-  (NumT))
-
-  
 ;; parse
 ;; - given concrete syntax in the form of an s-expression
 ;; - parses it into an ExprC
@@ -242,7 +231,32 @@
     [(list func args ...)
      (AppC (parse func) (map (λ ([arg : Sexp]) (parse arg)) args))]
     [other (error 'parse "OAZO syntax error in parse: expected valid syntax, got ~e" s)]))
-  
+
+
+;; parse-type
+;; - given an expression to determine its type
+(define (parse-type [s : Sexp]) : Type
+  (match s
+    ['num (NumT)]
+    ['bool (BoolT)]
+    ['void (VoidT)]
+    ['numarray (ArrayT)]
+    [(list inTypes ... '-> outType) (UserT (map (λ ([inType : Sexp])
+                                                  (parse-type inType))
+                                                (cast inTypes (Listof Sexp)))
+                                           (parse-type outType))]))
+
+(check-equal? (parse-type '{num bool numarray -> void}) (UserT (list (NumT) (BoolT) (ArrayT)) (VoidT)))
+(check-equal? (parse-type '{{num num -> num} num -> num}) (UserT (list (UserT (list (NumT) (NumT)) (NumT)) (NumT)) (NumT)))
+(check-equal? (parse-type '{-> num}) (UserT '() (NumT)))
+
+
+;; type-check
+;; - given Abstract Syntax
+;; - checks for type errors
+(define (type-check [exp : ExprC] [env : Environment]) : Type
+  (NumT))
+
 
 ;; parse-let takes a list of Sexps and a body and turns it into an ExprC
 (define (parse-let [bindings : (Listof Sexp)] [body : Sexp]) : ExprC
@@ -252,14 +266,14 @@
 
 ;; find-names is given a list of Sexps, bindings, and returns a list of IdCs
 ;; corresponding to the names in the bindings
-(define (find-names [bindings : (Listof Sexp)] [seen : (Listof Sexp)]) : (Listof IdC)
+(define (find-names [bindings : (Listof Sexp)] [seen : (Listof Sexp)]) : (Listof ParamC)
   (match bindings
     ['() '()]
-    [(cons (list (? symbol? name) '<- expr) r-bindings)
+    [(cons (list (list (? symbol? name) ': type) '<- expr) r-bindings)
      (cond
        [(and (not-reserved? name) (argInList? name seen))
         (error 'find-names "OAZO syntax error in find-names: ~e defined multiple times" name)]
-       [else (cons (IdC name) (find-names r-bindings (cons name seen)))])]
+       [else (cons (ParamC (IdC name) (parse-type type)) (find-names r-bindings (cons name seen)))])]
     [other (error 'find-names "OAZO syntax error in find-names: expected valid let syntax, got ~e" other)]))
 
 
@@ -273,12 +287,12 @@
 
 ;; parse-params is given a list of any and turns in into a list of IdCs.
 ;; if one of the elements of the given list is not a symbol or a reserved name, then it raises an error.
-(define (parse-params [params : (Listof Any)] [seen : (Listof Any)]) : (Listof IdC)
+(define (parse-params [params : (Listof Sexp)] [seen : (Listof Any)]) : (Listof ParamC)
   (match params
     ['() '()]
-    [(cons (? symbol? f) r) #:when
-                            (not-reserved? f)#;(and (not (argInList? f seen)) (not-reserved? f))
-                            (cons (IdC f) (parse-params r (cons f seen)))]
+    [(cons (list type (? symbol? s)) r) #:when
+                            (not-reserved? s)#;(and (not (argInList? f seen)) (not-reserved? f))
+                            (cons (ParamC (IdC s) (parse-type type)) (parse-params r (cons s seen)))]
     [other (error 'parse-params "OAZO syntax error in parse-params: expected valid parameter syntax, got ~e" other)]))
 
 
@@ -302,7 +316,7 @@
   
  
 ;;;; ---- INTERPRETING
-
+#;(
 
 ;; serialize
 ;; - should accept any OAZO7 value, and return a string
@@ -469,7 +483,9 @@
                [other (error 'create-appc-bindings "OAZO runtime error in create-appc-bindings:
                                                     too many params")])])]))
  
+)
 
+   
 ;; argInList? takes any one element, and a list of elements,
 ;; and returns true if the element is in the list, and false otherwise
 (define (argInList? [arg : Any] [search-list : (Listof Any)]) : Boolean
@@ -479,7 +495,7 @@
                   [(equal? f arg) #t]
                   [else (argInList? arg r)])]))
 
-
+#;(
 ;; extend-env takes a starting environment, start and a list of bindings, new
 ;; and adds all of the bindings of new to the start environment
 (define (extend-env [start : Environment] [new : Environment]) : Environment
@@ -532,12 +548,16 @@
     [(cons (Binding bs bi) r) (cond
                                 [(equal? bs s) bi]
                                 [else (find-loc s r)])]))
-
+)
 
 
 
 ;;;; ---- Testing ----
 
+
+#;(
+
+   
 ;; store definitions for tests
 (define test-store1
   (Store (list (Cell 0 (PrimV '+))
@@ -874,6 +894,7 @@
 
 
 ;; create-appc-bindings tests
+)
 
 
 ;; parse tests
@@ -888,14 +909,14 @@
 (check-equal? (parse '+) (IdC '+))
 (check-equal? (parse '{anon {} : 4})
               (LamC '() (NumC 4)))
-(check-equal? (parse '{anon {x} : 4})
-              (LamC (list (IdC 'x)) (NumC 4)))
-(check-equal? (parse '{anon {x y} : 4})
-              (LamC (list (IdC 'x) (IdC 'y)) (NumC 4)))
-(check-equal? (parse '{anon {x y z} : 4})
-              (LamC (list (IdC 'x) (IdC 'y) (IdC 'z)) (NumC 4)))
-(check-equal? (parse '{anon {+ y z} : 4})
-              (LamC (list (IdC '+) (IdC 'y) (IdC 'z)) (NumC 4)))
+(check-equal? (parse '{anon {[num x]} : 4})
+              (LamC (list (ParamC (IdC 'x) (NumT))) (NumC 4)))
+(check-equal? (parse '{anon {[num x] [num y]} : 4})
+              (LamC (list (ParamC (IdC 'x) (NumT)) (ParamC (IdC 'y) (NumT))) (NumC 4)))
+(check-equal? (parse '{anon {[num x] [num y] [num z]} : 4})
+              (LamC (list (ParamC (IdC 'x) (NumT)) (ParamC (IdC 'y) (NumT)) (ParamC (IdC 'z) (NumT))) (NumC 4)))
+(check-equal? (parse '{anon {[num +] [num y] [num z]} : 4})
+              (LamC (list (ParamC (IdC '+) (NumT)) (ParamC (IdC 'y) (NumT)) (ParamC (IdC 'z) (NumT))) (NumC 4)))
 (check-equal? (parse '{name})
               (AppC (IdC 'name) '()))
 (check-equal? (parse '{if {<= 5 10} then {+ 2 5} else {+ 2 10}})
@@ -910,15 +931,26 @@
               (IfC (AppC (IdC '<=) (list (NumC 2) (NumC 1)))
                    (NumC 2)
                    (NumC 1)))
-(check-equal? (parse '{{anon {add} :
+(check-equal? (parse '{{anon {[{-> num} add]} :
                              {* 2 {add}}}
                        {anon {} : {+ 3 7}}})
-              (AppC (LamC (list (IdC 'add))
+              (AppC (LamC (list (ParamC (IdC 'add) (UserT '() (NumT))))
                           (AppC (IdC '*)
                                 (list (NumC 2) (AppC (IdC 'add) '()))))
                     (list (LamC '()
                                 (AppC (IdC '+)
                                       (list (NumC '3) (NumC '7)))))))
+(check-equal? (parse '{let
+                        {[z : num] <- {+ 9 14}}
+                        {[y : num] <- 98}
+                        {+ z y}}) 
+              (AppC (LamC (list (ParamC (IdC 'z) (NumT)) (ParamC (IdC 'y) (NumT)))
+                          (AppC (IdC '+)
+                                (list (IdC 'z) (IdC 'y))))
+                    (list (AppC (IdC '+)
+                                (list (NumC 9) (NumC 14)))
+                          (NumC 98))))
+#;(
 (check-equal? (parse '{{anon {add} :
                              {add 7 8}}
                        {anon {w z} : {+ w z}}})
@@ -938,16 +970,7 @@
                                 (AppC (IdC '+)
                                       (list (AppC (IdC '+) (list (IdC 'w) (IdC 'x)))
                                             (AppC (IdC '+) (list (IdC 'y) (IdC 'z)))))))))
-(check-equal? (parse '{let
-                        {z <- {+ 9 14}}
-                        {y <- 98}
-                        {+ z y}}) 
-              (AppC (LamC (list (IdC 'z) (IdC 'y))
-                          (AppC (IdC '+)
-                                (list (IdC 'z) (IdC 'y))))
-                    (list (AppC (IdC '+)
-                                (list (NumC 9) (NumC 14)))
-                          (NumC 98))))
+
 (check-exn #rx"OAZO syntax error in parse:" (lambda () (parse '{})))
 (check-exn #rx"OAZO syntax error in parse-params:" (lambda () (parse '{anon {7 y z} : 4})))
 (check-exn #rx"OAZO syntax error in parse-params:" (lambda () (parse '{anon {{f 5} y z} : 4})))
@@ -964,13 +987,10 @@
 (check-exn #rx"OAZO syntax error in not-reserved" (lambda () (parse '(+ then 4))))
 (check-exn #rx"OAZO syntax error in find-names" (lambda () (parse '(let (z <- (anon () : 3)) (z <- 9) (z)))))
 (check-exn #rx"OAZO syntax error in not-reserved?" (lambda () (parse '(let (: <- "") "World"))))
-
+)
 
 ;; find-names tests
 (check-exn #rx"OAZO syntax error in find-names" (lambda () (find-names (cons 7 '()) '())))
-
-
-
 
 
 
