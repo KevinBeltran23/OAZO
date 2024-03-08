@@ -3,10 +3,13 @@
 
 ;;;; ---- NOTES ----
 
-; Check to make sure that each store is used exactly once with the exception of the mutation operations added later
-; Need to implement := but NOT as a primitive
-; need to fix cloV interpretting and create AppC bindings
-; then we can test + move on to type checking
+;; time to work on type checking
+;; first implement actual Type data types
+;; - bit confused on how they should be implemented
+;; then make the parser for types
+;; afterwards make the type checker 
+
+;; prog -> |Parse| -> AST -> |TC| -> AST -> |interp| -> value
 
 
 ; We ____ implemented assignment 7
@@ -17,7 +20,7 @@
 ; 4) interp's helper functions
 ; 5) testing
  
- 
+  
 
 ;;;; ---- TYPE DEFINITIONS ----
 
@@ -46,6 +49,12 @@
 (struct PrimV ([s : Symbol]) #:transparent)
 (struct ArrayV ([location : Integer] [length : Integer]) #:transparent)
 (struct NullV () #:transparent)
+
+;; A Type is either a built in BaseT or a user defined {ty ... -> ty}
+(define-type Type(U BaseT UserT))
+
+(struct UserT ([input : (Listof Symbol)] [output : Symbol]) #:transparent)
+(struct BaseT ([s : Symbol]) #:transparent)
  
 
 ;; An Environment is a list of Bindings
@@ -54,6 +63,12 @@
  
 ;; A Binding consists of a Symbol (id) and an Integer (location)
 (struct Binding([id : Symbol] [location : Integer]) #:transparent)
+
+;; A Tenv is a list of TBindings
+(define-type TEnvironment(Listof TBinding))
+
+;; A TBinding consists of a Symbol and an associated Type
+(struct TBinding ([id : Symbol] [ty : Type]) #:transparent)
 
 
 ;; A Store is a list of Cells and an integer representing the length of the store
@@ -80,7 +95,16 @@
 (struct EStore([env : Environment] [store : Store]) #:transparent)
 
 
-;; top-env binds primitive Values to their corresponding ...  NEEDS DECSRIPTION ----------------------------
+;; base-tenv binds base types to their corresponding symbols ... NEEDS DESCRIPTION .......................
+(define base-tenv
+  (list (TBinding 'num (BaseT 'num))
+        (TBinding 'bool (BaseT 'bool))
+        (TBinding 'str (BaseT 'str))
+        (TBinding 'void (BaseT 'void))
+        (TBinding 'numarray (BaseT 'numarray))))
+
+
+;; top-env binds primitive Values to their corresponding ...  NEEDS DESCRIPTION ----------------------------
 (define top-env
   (list (Binding '+ 0)
         (Binding '- 1)
@@ -172,32 +196,22 @@
                                   estore-env)
                       estore-store)])])])]))
 
-(define (interp-mutate [s : Symbol] [env : Environment] [vstore : VStore]) : VStore
-  (match vstore
-    [(VStore val store)
-     (VStore (NullV)
-             (Store (update-store (Store-cells store) (find-loc s env) val)
-                    (Store-length store)))]))
-
-(define (update-store [cells : (Listof Cell)] [loc : Integer] [val : Value]) : (Listof Cell)
-  (match cells
-    ['() '()]
-    [(cons (Cell cloc cval) r)
-     (cond
-       [(equal? cloc loc) (cons (Cell loc val) (update-store r loc val))]
-       [else (cons (Cell cloc cval) (update-store r loc val))])]))
-
-(define (find-loc [s : Symbol] [env : Environment]) : Integer
-  (match env
-    ['() (error 'interp "OAZO runtime error in interp-mutate:
-                         tried to mutate binding ~e, but binding ~e doesn't exist" s s)]
-    [(cons (Binding bs bi) r) (cond
-                                [(equal? bs s) bi]
-                                [else (find-loc s r)])]))
-
  
  
 ;;;; ---- PARSING ----
+
+
+;; parse-type
+;; - given an expression to determine its type
+(define (parse-type [s : Sexp]) : Type
+  (BaseT 'num))
+
+
+;; type-check
+;; - given Abstract Syntax
+;; - checks for type errors
+(define (type-check [exp : ExprC] [env : Environment]) : Type
+  (BaseT 'num))
 
   
 ;; parse
@@ -448,7 +462,7 @@
                    (create-appc-bindings r-params r-args (cons s seen) new-store (cons (Binding s base) build-env))])]
                [other (error 'create-appc-bindings "OAZO runtime error in create-appc-bindings:
                                                     too many params")])])]))
-
+ 
 
 ;; argInList? takes any one element, and a list of elements,
 ;; and returns true if the element is in the list, and false otherwise
@@ -468,12 +482,8 @@
     [(cons f-binding r-bindings) (cons f-binding (extend-env start r-bindings))]))
 
 
-
-;; Allocate accepts a store, a number of locations to be allocated,
-;; and a value to place in all of them, and returns two things; the base location, and an extended store
-;; Design your store so that the "next allocated" location is derived directly from the store.
-;; It could be a separate counter that’s part of a define-type, or it could be a function that just
-;; scans the store to find a new address. Don’t use the new-loc defined by the book; it makes testing quite painful.
+;; allocate accepts a store, a number of locations to be allocated, and a value to place in all of them
+;; - returns two things; the base location, and an extended store
 (define (allocate [store : Store] [num : Real] [val : Value]) : IStore
   (cond
     [(and (integer? num) (> num 0))
@@ -483,13 +493,39 @@
     [else (error 'allocate "OAZO runtime error in allocate: tried to allocate fewer than 1 cell")]))
 
 
-;; Allocate Helper recursively creates new cells in the store
+;; allocate-helper recursively creates new cells in the store
 (define (allocate-helper [start-cells : (Listof Cell)] [num : Integer] [val : Value] [next-loc : Integer]) : (Listof Cell)
   (match start-cells
     ['() (cond
            [(equal? num 0) '()]
            [else (cons (Cell next-loc val) (allocate-helper '() (- num 1) val (+ next-loc 1)))])]
     [(cons f r) (cons f (allocate-helper r num val next-loc))]))
+
+;; needs description
+(define (interp-mutate [s : Symbol] [env : Environment] [vstore : VStore]) : VStore
+  (match vstore
+    [(VStore val store)
+     (VStore (NullV)
+             (Store (update-store (Store-cells store) (find-loc s env) val)
+                    (Store-length store)))]))
+
+;; needs description
+(define (update-store [cells : (Listof Cell)] [loc : Integer] [val : Value]) : (Listof Cell)
+  (match cells
+    ['() '()]
+    [(cons (Cell cloc cval) r)
+     (cond
+       [(equal? cloc loc) (cons (Cell loc val) (update-store r loc val))]
+       [else (cons (Cell cloc cval) (update-store r loc val))])]))
+
+;; needs description
+(define (find-loc [s : Symbol] [env : Environment]) : Integer
+  (match env
+    ['() (error 'interp "OAZO runtime error in interp-mutate:
+                         tried to mutate binding ~e, but binding ~e doesn't exist" s s)]
+    [(cons (Binding bs bi) r) (cond
+                                [(equal? bs s) bi]
+                                [else (find-loc s r)])]))
 
 
 
