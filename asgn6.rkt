@@ -69,7 +69,7 @@
 
 
 
-
+ 
 ;;;; ---- TOP-INTERP and INTERP ----
 
 
@@ -212,7 +212,7 @@
                      [else "false"])]
     [(StrV s) (format "~v" s)]
     [(CloV params body env) "#<procedure>"]
-    [(PrimV symb) "#<primop>"]))
+    [(PrimV symb) "#<primop>"])) 
 
 
 ;; like serialize - but does not format strings
@@ -488,7 +488,7 @@
                       {sum-list my-list sum-list}}}})
 
  
-
+ 
                                                                                   
 ;; top-interp tests
 (check-equal? (top-interp '10) "10")

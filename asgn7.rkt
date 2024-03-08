@@ -4,6 +4,9 @@
 ;;;; ---- NOTES ----
 
 ; Check to make sure that each store is used exactly once with the exception of the mutation operations added later
+; Need to implement := but NOT as a primitive
+; need to fix cloV interpretting and create AppC bindings
+; then we can test + move on to type checking
 
 
 ; We ____ implemented assignment 7
@@ -14,43 +17,10 @@
 ; 4) interp's helper functions
 ; 5) testing
  
-
+ 
 
 ;;;; ---- TYPE DEFINITIONS ----
 
-#;(  new oazo syntax
-Expr	 	=	 	Num
- 	 	|	 	id
- 	 	|	 	String
- 	 	|	 	{id := Expr}
- 	 	|	 	{if Expr then Expr else Expr}
- 	 	|	 	{let [[id : ty] <- Expr] ... Expr}
- 	 	|	 	{anon {[ty id] ...} : Expr}
- 	 	|	 	{seq Expr ...}
- 	 	|	 	{Expr Expr ...}
-
-  ty	 	=	 	num
- 	 	|	 	bool
- 	 	|	 	str
- 	 	|	 	void
- 	 	|	 	{ty ... -> ty}
- 	 	|	 	numarray
-
-  operator	 	=	 	+
- 	 	|	 	-
- 	 	|	 	*
- 	 	|	 	/
- 	 	|	 	num-eq?
- 	 	|	 	str-eq?
- 	 	|	 	<=
- 	 	|	 	substring
- 	 	|	 	arr
- 	 	|	 	aref
- 	 	|	 	aset
- 	 	|	 	alen
-
-... where an id is not let, :=, if, then, else, :, <-, seq.
-)
 
 ;; ExprC is either a number (NumC), an id (IdC), a string (StrC),
 ;; an if ____ else ____ then ____ expression (IfC),
@@ -76,7 +46,7 @@ Expr	 	=	 	Num
 (struct PrimV ([s : Symbol]) #:transparent)
 (struct ArrayV ([location : Integer] [length : Integer]) #:transparent)
 (struct NullV () #:transparent)
-
+ 
 
 ;; An Environment is a list of Bindings
 ;; - Change the Env type to map names to locations
@@ -113,21 +83,6 @@ Expr	 	=	 	Num
 
 ;; top-env binds primitive Values to their corresponding symbols
 ;; need to redefine top-env to work with stores
-#;(define top-env
-  (list (Binding '+ (PrimV '+))
-        (Binding '- (PrimV '-))
-        (Binding '* (PrimV '*))
-        (Binding '/ (PrimV '/))
-        (Binding '<= (PrimV '<=))
-        (Binding 'num-eq? (PrimV 'num-eq?))
-        (Binding 'str-eq? (PrimV 'str-eq?))
-        (Binding 'arr-eq? (PrimV 'str-eq?))
-        (Binding 'substring 7)
-        (Binding 'arr (PrimV 'arr))
-        (Binding 'aref (PrimV 'aref))
-        (Binding 'aset (PrimV 'aset))
-        (Binding 'alen (PrimV 'alen))))
-
 (define top-env
   (list (Binding '+ 0)
         (Binding '- 1)
@@ -137,12 +92,15 @@ Expr	 	=	 	Num
         (Binding 'num-eq? 5)
         (Binding 'str-eq? 6)
         (Binding 'arr-eq? 7)
-        (Binding 'substring 8)
+        (Binding 'substring 8) 
         (Binding 'arr 9)
         (Binding 'aref 10)
         (Binding 'aset 11)
-        (Binding 'alen 12)))
-  
+        (Binding 'alen 12)
+        (Binding 'true 13)
+        (Binding 'false 14)
+        (Binding 'seq 15)))
+    
 ;; Im assuming we need a top store???
 ;; and then somehow we "add" more values to our store
 ;; not sure tbh this is just here temporarily
@@ -154,13 +112,16 @@ Expr	 	=	 	Num
                (Cell 4 (PrimV '<=))
                (Cell 5 (PrimV 'num-eq?))
                (Cell 6 (PrimV 'str-eq?))
-               (Cell 7 (PrimV 'arr-eq?))
+               (Cell 7 (PrimV 'arr-eq?)) 
                (Cell 8 (PrimV 'substring))
                (Cell 9 (PrimV 'arr))
                (Cell 10 (PrimV 'aref))
                (Cell 11 (PrimV 'aset))
-               (Cell 12 (PrimV 'alen)))
-         13))
+               (Cell 12 (PrimV 'alen))
+               (Cell 13 (BoolV #t))
+               (Cell 14 (BoolV #f))
+               (Cell 15 (PrimV 'seq)))
+         16))
 
 
 
@@ -184,15 +145,16 @@ Expr	 	=	 	Num
     [(NumC n) (VStore (NumV n) store)]
     [(IdC s) (VStore (fetch (lookup s env) store) store)]
     [(StrC s) (VStore (StrV s) store)]
-    #;[(IfC test-expr then-expr else-expr)
-     (match (interp test-expr env) 
-       [(BoolV #t) (interp then-expr env)]
-       [(BoolV #f) (interp else-expr env)]
+    [(IfC test-expr then-expr else-expr)
+     (match (interp test-expr env store) 
+       [(VStore b s) (match b 
+                       [(BoolV #t) (interp then-expr env s)]
+                       [(BoolV #f) (interp else-expr env s)])]
        [other (error 'interp "OAZO runtime error in interp:
                               comparison ~e returned non-boolean value of ~e"
                      test-expr other)])] 
     [(LamC params body)
-     (VStore (CloV params body env) store)]  
+     (VStore (CloV params body env) store)]   
     [(AppC func args) 
      (match (interp func env store)
        [(VStore (PrimV s) new-store) (interp-primv s (interp-args args env new-store '()))]
@@ -221,7 +183,7 @@ Expr	 	=	 	Num
  
 ;;;; ---- PARSING ----
 
-
+  
 ;; parse
 ;; - given concrete syntax in the form of an s-expression
 ;; - parses it into an ExprC
@@ -229,15 +191,18 @@ Expr	 	=	 	Num
   (match s
     [(? real? x) (NumC x)]
     [(? symbol? symb) #:when
-                      (not-reserved? symb)
+                      (not-reserved? symb) 
                       (IdC symb)]
     [(? string? str) (StrC str)]
     [(list 'if test-expr 'then then-expr 'else else-expr)
      (IfC (parse test-expr) (parse then-expr) (parse else-expr))]
+    #;[(list ':= old new) (AppC (IdC ':=) ...)]
     [(list 'let bindings ... body) (parse-let (cast bindings (Listof Sexp)) body)]
     [(list 'anon (list params ...) ': body)
      (LamC (parse-params params '()) (parse body))]
     [(list 'quote args ...) (error 'parse "OAZO syntax error in parse: expected valid syntax, got ~e" s)]
+    [(list 'seq args ...)
+     (AppC (IdC 'seq) (map (λ ([arg : Sexp]) (parse arg)) args))]
     [(list func args ...)
      (AppC (parse func) (map (λ ([arg : Sexp]) (parse arg)) args))]
     [other (error 'parse "OAZO syntax error in parse: expected valid syntax, got ~e" s)]))
@@ -299,7 +264,7 @@ Expr	 	=	 	Num
      (error 'not-reserved? "OAZO syntax error in not-reserved?: expected valid name, got ~e" name)]
     [else #t]))
 
- 
+  
  
 ;;;; ---- INTERPRETING
 
@@ -326,20 +291,14 @@ Expr	 	=	 	Num
             [(Binding symb location) #:when (equal? symb s) location]
             [other (lookup s (rest env))])]))
  
-
+  
 ;; Fetch function to retreive a value from store
 (define (fetch [l : Integer] [store : Store]) : Value
   (match store
     [(Store '() n) (error 'lookup-binding "OAZO runtime error in lookup: Location ~e not found in store" l)]
     [(Store (cons (Cell location val) r) n) #:when (equal? location l) val]
-    [(Store (cons f r) n) (fetch l (Store r n))])
-  
-  #;(cond
-    [(null? store) (error 'lookup-binding "OAZO runtime error in lookup: Location ~e not found in store" l)]
-    [else (match (first (Store-cells store))
-            [(Cell location val) #:when (equal? location l) val]
-            [other (fetch l (rest store))])]))
-
+    [(Store (cons f r) n) (fetch l (Store r n))]))
+ 
 
 ;; Interprets a list of ExprC's and returns a list of Values combined with a new Store
 (define (interp-args [args : (Listof ExprC)] [env : Environment] [store : Store] [vals : (Listof Value)]) : VListStore
@@ -355,19 +314,21 @@ Expr	 	=	 	Num
     ['() output]
     [(cons f r) (reverse-list r (cons f output))]))
 
-
+ 
  
 ;; interp-primv is given a symbol corresponding to a primitive function and
 ;; a list of values corresponding to the arguments said function is being called with.
 ;; it then evaluates the primitive operator with the given arguments
 (define (interp-primv [op : Symbol] [vliststore : VListStore]): VStore
   (define store (VListStore-sto vliststore))
-  (match (VListStore-args vliststore)
+  (define args (VListStore-args vliststore))
+  (match args
     [(list arg1) (match op 
                    ['error (VStore (error 'user-error "OAZO user error: ~e" (serialize (VStore arg1 store))) store)]
                    ['alen (cond
                             [(ArrayV? arg1) (VStore (NumV (ArrayV-length arg1)) store)]
                             [else (call-interp-primv-error2 op)])]
+                   ['seq (VStore arg1 store)]
                    [other (call-interp-primv-error1 op)])]
     [(list (NumV n1) (NumV n2)) (match op
                                   ['+ (VStore (NumV (+ n1 n2)) store)] 
@@ -384,6 +345,7 @@ Expr	 	=	 	Num
                                              [(IStore base new-store) (VStore (ArrayV base (cast n1 Integer)) new-store)])]
                                           [else (call-interp-primv-error2 op)])]
                                   ['num-eq? (VStore (BoolV (equal? n1 n2)) store)]
+                                  ['seq (VStore (NumV n2) store)]
                                   [other (call-interp-primv-error1 op)])]
     [(list arg1 arg2) (match op
                         ['str-eq? (cond
@@ -402,8 +364,9 @@ Expr	 	=	 	Num
                                     [(and (integer? n) (> n -1) (< n len))
                                      (VStore (fetch (cast (+ loc n) Integer) store) store)]
                                     [else (call-interp-primv-error2 op)])]
-                                 [other (call-interp-primv-error2 op)])]
+                                 [other (call-interp-primv-error2 op)])] 
                         ['error (call-interp-primv-error1 op)]
+                        ['seq (VStore arg2 store)]
                         [other (call-interp-primv-error2 op)])]
     [(list (ArrayV loc len) (NumV idx) (NumV newval))
      (match op
@@ -414,10 +377,15 @@ Expr	 	=	 	Num
                                 (Store-length store)))]
                 [else (call-interp-primv-error2 op)])]
        [other (call-interp-primv-error1 op)])]
+    [(list argList ...)
+     (match op
+       ['seq (match args
+               [(cons f r) (interp-primv op (VListStore r store))])]
+       [other (call-interp-primv-error1 op)])]
     [other (call-interp-primv-error1 op)]))
 
 
-;;
+;; Mutates a value of an array at a given location
 (define (mutate-array [inputStore : Store] [loc : Integer] [newval : Real]) : (Listof Cell)
   (match inputStore
     [(Store '() store-len) '()]
@@ -465,6 +433,7 @@ Expr	 	=	 	Num
                                             (cons s seen)))]
                [other (error 'create-appc-bindings "OAZO runtime error in create-appc-bindings:
                                                     too many params")])])]))
+
 ; change to take in a store as well.
 ; Then instead of creating binding between s & f-arg,
 ; gotta create a binding between s & a num, then a cell from that num to f-arg
@@ -488,7 +457,6 @@ Expr	 	=	 	Num
   (match new
     ['() start]
     [(cons f-binding r-bindings) (cons f-binding (extend-env start r-bindings))]))
-
 
 
 
@@ -517,8 +485,6 @@ Expr	 	=	 	Num
 
 
 
-
-
 ;;;; ---- Testing ----
 
 ;; definitions for tests
@@ -539,6 +505,7 @@ Expr	 	=	 	Num
                (Cell 1 (StrV "test"))
                (Cell 2 (StrV "test")))
          3))
+
 (define test-store4
   (Store (list (Cell 0 (PrimV '+))
                (Cell 1 (PrimV '-))
@@ -553,8 +520,12 @@ Expr	 	=	 	Num
                (Cell 10 (PrimV 'aref))
                (Cell 11 (PrimV 'aset))
                (Cell 12 (PrimV 'alen))
-               (Cell 13 (NumV 3)))
-         14))
+               (Cell 13 (BoolV #t))
+               (Cell 14 (BoolV #f))
+               (Cell 15 (PrimV 'seq))
+               (Cell 16 (NumV 3)))
+         17))
+
 (define test-store5
   (Store (list (Cell 0 (PrimV '+))
                (Cell 1 (PrimV '-))
@@ -569,11 +540,15 @@ Expr	 	=	 	Num
                (Cell 10 (PrimV 'aref))
                (Cell 11 (PrimV 'aset))
                (Cell 12 (PrimV 'alen))
-               (Cell 13 (NumV 3))
-               (Cell 14 (NumV 3))
-               (Cell 15 (NumV 3))
-               (Cell 16 (NumV 3)))
-         17))
+               (Cell 13 (BoolV #t))
+               (Cell 14 (BoolV #f))
+               (Cell 15 (PrimV 'seq))
+               (Cell 16 (NumV 3))
+               (Cell 17 (NumV 3))
+               (Cell 18 (NumV 3))
+               (Cell 19 (NumV 3)))
+         20))
+
 (define test-store6
   (Store (list (Cell 0 (PrimV '+))
                (Cell 1 (PrimV '-))
@@ -588,12 +563,16 @@ Expr	 	=	 	Num
                (Cell 10 (PrimV 'aref))
                (Cell 11 (PrimV 'aset))
                (Cell 12 (PrimV 'alen))
-               (Cell 13 (NumV 9))
-               (Cell 14 (NumV 9))
-               (Cell 15 (NumV 12))
-               (Cell 16 (NumV 12))
-               (Cell 17 (NumV 12)))
-         18))
+               (Cell 13 (BoolV #t))
+               (Cell 14 (BoolV #f))
+               (Cell 15 (PrimV 'seq))
+               (Cell 16 (NumV 9))
+               (Cell 17 (NumV 9))
+               (Cell 18 (NumV 12))
+               (Cell 19 (NumV 12))
+               (Cell 20 (NumV 12)))
+         21))
+ 
 (define test-store7
   (Store (list (Cell 0 (PrimV '+))
                (Cell 1 (PrimV '-))
@@ -608,10 +587,13 @@ Expr	 	=	 	Num
                (Cell 10 (PrimV 'aref))
                (Cell 11 (PrimV 'aset))
                (Cell 12 (PrimV 'alen))
-               (Cell 13 (NumV 9))
-               (Cell 14 (NumV 12))
-               (Cell 15 (NumV 9)))
-         16))
+               (Cell 13 (BoolV #t))
+               (Cell 14 (BoolV #f))
+               (Cell 15 (PrimV 'seq))
+               (Cell 16 (NumV 9))
+               (Cell 17 (NumV 12))
+               (Cell 18 (NumV 9)))
+         19))
 
 
 (define prog1 '{alen {arr 3 7}})
@@ -649,9 +631,12 @@ Expr	 	=	 	Num
                                       {anon {a2} :
                                             {f2 {f2 a2}}}}}}
                          {anon {x} : {* 2 x}}}}
-                  579}) 
+                  579})
+(define prog16 '(if {<= 1 1} then "one" else "two"))
+(define prog17 '{seq {+ 2 3}})
+(define prog18 '{seq {+ 2 3} {+ 4 5}})
+ 
 
-  
 ;; top-interp tests
 (check-equal? (top-interp '{+ 3 4}) "7")
 (check-equal? (top-interp '{* 3 4}) "12")
@@ -673,6 +658,9 @@ Expr	 	=	 	Num
 (check-equal? (top-interp prog13) "10")
 (check-equal? (top-interp prog14) "101")
 (check-equal? (top-interp prog15) "true")
+(check-equal? (top-interp prog16) "\"one\"")
+(check-equal? (top-interp prog17) "5")
+(check-equal? (top-interp prog18) "9")
 (check-exn #rx"OAZO runtime error in allocate" (lambda () (top-interp '{arr 0 79})))
 (check-exn #rx"OAZO runtime error in allocate" (lambda () (top-interp '{arr -1 79})))
 (check-exn #rx"OAZO runtime error in interp-primv" (lambda () (top-interp prog5)))
@@ -685,8 +673,8 @@ Expr	 	=	 	Num
 (check-equal? (interp (NumC 5) top-env top-store) (VStore (NumV 5) top-store))
 (check-equal? (interp (AppC (IdC '+) (list (NumC 2) (NumC 10))) top-env top-store)
               (VStore (NumV 12) top-store))
-(check-equal? (interp (AppC (IdC 'arr) (list (NumC 1) (NumC 3))) top-env top-store) (VStore (ArrayV 13 1) test-store4))
-(check-equal? (interp (AppC (IdC 'arr) (list (NumC 4) (NumC 3))) top-env top-store) (VStore (ArrayV 13 4) test-store5))
+(check-equal? (interp (AppC (IdC 'arr) (list (NumC 1) (NumC 3))) top-env top-store) (VStore (ArrayV 16 1) test-store4))
+(check-equal? (interp (AppC (IdC 'arr) (list (NumC 4) (NumC 3))) top-env top-store) (VStore (ArrayV 16 4) test-store5))
 (check-equal? (interp (AppC (IdC 'arr-eq?)
                             (list (AppC (IdC 'arr)
                                         (list (NumC 2) (NumC 9)))
@@ -722,7 +710,7 @@ Expr	 	=	 	Num
                                                                       top-env
                                                                       test-store7)))
 
-
+   
 ;; interp-args tests
 (check-equal? (interp-args (list (NumC 3) (AppC (IdC '+) (list (NumC 4) (NumC 5))))
                            top-env top-store
@@ -741,13 +729,13 @@ Expr	 	=	 	Num
 
 ;; interp-primv tests
 (check-equal? (interp-primv '+ (VListStore (list (NumV 7) (NumV 8)) top-store)) (VStore (NumV 15) top-store))
-(check-equal? (interp-primv 'arr (VListStore (list (NumV 1) (NumV 3)) top-store)) (VStore (ArrayV 13 1) test-store4))
+(check-equal? (interp-primv 'arr (VListStore (list (NumV 1) (NumV 3)) top-store)) (VStore (ArrayV 16 1) test-store4))
 (check-exn #rx"OAZO runtime error in interp-primv" (lambda () (interp-primv '+ (VListStore (list (NumV 0) (NumV 1) (NumV 3)) top-store))))
 (check-exn #rx"OAZO runtime error in interp-primv" (lambda () (interp-primv '+ (VListStore (list (NumV 3)) top-store))))
 (check-exn #rx"OAZO runtime error in interp-primv" (lambda () (interp-primv '+ (VListStore '() top-store))))
 
 
- 
+  
 
 ;; lookup and fetch tests
 
