@@ -29,7 +29,7 @@
 ;; an if ____ else ____ then ____ expression (IfC),
 ;; an anonymous function definition (LamC),
 ;; or a function application (AppC)
-(define-type ExprC (U NumC IdC StrC IfC LamC AppC))
+(define-type ExprC (U NumC IdC StrC IfC LamC AppC ParamC))
 
 (struct NumC ([n : Real]) #:transparent)
 (struct IdC ([s : Symbol]) #:transparent)
@@ -37,6 +37,7 @@
 (struct IfC  ([test-expr : ExprC] [then-expr : ExprC] [else-expr : ExprC]) #:transparent)
 (struct LamC ([params : (Listof IdC)] [body : ExprC]) #:transparent)
 (struct AppC ([func : ExprC] [args : (Listof ExprC)]) #:transparent)
+(struct ParamC ([id : IdC] [type : Type]) #:transparent)
 
 
 ;; Value is either a number, a boolean, a string, a closure, or a primitive operator
