@@ -51,10 +51,15 @@
 (struct NullV () #:transparent)
 
 ;; A Type is either a built in BaseT or a user defined {ty ... -> ty}
-(define-type Type(U BaseT UserT))
+(define-type Type(U NumT BoolT StrT VoidT ArrayT UserT))
 
-(struct UserT ([input : (Listof Symbol)] [output : Symbol]) #:transparent)
-(struct BaseT ([s : Symbol]) #:transparent)
+(struct NumT () #:transparent)
+(struct BoolT () #:transparent)
+(struct StrT () #:transparent)
+(struct VoidT () #:transparent)
+(struct ArrayT () #:transparent)
+(struct UserT ([inputs : (Listof Type)] [output : Type]) #:transparent)
+
  
 
 ;; An Environment is a list of Bindings
@@ -97,11 +102,11 @@
 
 ;; base-tenv binds base types to their corresponding symbols ... NEEDS DESCRIPTION .......................
 (define base-tenv
-  (list (TBinding 'num (BaseT 'num))
-        (TBinding 'bool (BaseT 'bool))
-        (TBinding 'str (BaseT 'str))
-        (TBinding 'void (BaseT 'void))
-        (TBinding 'numarray (BaseT 'numarray))))
+  (list (TBinding 'num (NumT))
+        (TBinding 'bool (BoolT))
+        (TBinding 'str (StrT))
+        (TBinding 'void (VoidT))
+        (TBinding 'numarray (ArrayT))))
 
 
 ;; top-env binds primitive Values to their corresponding ...  NEEDS DESCRIPTION ----------------------------
@@ -204,14 +209,14 @@
 ;; parse-type
 ;; - given an expression to determine its type
 (define (parse-type [s : Sexp]) : Type
-  (BaseT 'num))
+  (NumT))
 
 
 ;; type-check
 ;; - given Abstract Syntax
 ;; - checks for type errors
 (define (type-check [exp : ExprC] [env : Environment]) : Type
-  (BaseT 'num))
+  (NumT))
 
   
 ;; parse
