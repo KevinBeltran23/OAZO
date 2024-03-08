@@ -98,9 +98,10 @@
         (Binding 'true 13)
         (Binding 'false 14)
         (Binding 'seq 15)
-        (Binding 'error 16)))
+        (Binding 'error 16)
+        (Binding ':= 17)))
     
-;; top-store NEEDS DECSRIPTION ----------------------------
+;; top-store  NEEDS DECSRIPTION ----------------------------
 (define top-store
   (Store (list (Cell 0 (PrimV '+))
                (Cell 1 (PrimV '-))
@@ -118,8 +119,9 @@
                (Cell 13 (BoolV #t))
                (Cell 14 (BoolV #f))
                (Cell 15 (PrimV 'seq))
-               (Cell 16 (PrimV 'error)))
-         17))
+               (Cell 16 (PrimV 'error))
+               (Cell 17 (PrimV ':=)))
+         18))
 
 
 
@@ -147,14 +149,18 @@
      (match (interp test-expr env store) 
        [(VStore b s) (match b 
                        [(BoolV #t) (interp then-expr env s)]
-                       [(BoolV #f) (interp else-expr env s)])]
-       [other (error 'interp "OAZO runtime error in interp:
+                       [(BoolV #f) (interp else-expr env s)]
+                       [other (error 'interp "OAZO runtime error in interp:
                               comparison ~e returned non-boolean value of ~e"
-                     test-expr other)])] 
+                                     test-expr other)])])] 
     [(LamC params body)
      (VStore (CloV params body env) store)]   
     [(AppC func args) 
      (match (interp func env store)
+       [(VStore (PrimV ':=) new-store)
+        (match args
+          [(list (IdC s) e) (interp-mutate s env (interp e env new-store))]
+          [other (call-interp-primv-error2 ':=)])]
        [(VStore (PrimV s) new-store) (interp-primv s (interp-args args env new-store '()))]
        [(VStore (CloV params body clov-env) new-store)
         (match (interp-args args env new-store '())
@@ -164,11 +170,30 @@
               (interp body
                       (extend-env clov-env
                                   estore-env)
-                      estore-store)])])]
-       [other (error 'interp "OAZO unimplemented feature in ~e" other)])]
-    [other (error 'interp "OAZO unimplemented feature in ~e" other)]))
+                      estore-store)])])])]))
 
+(define (interp-mutate [s : Symbol] [env : Environment] [vstore : VStore]) : VStore
+  (match vstore
+    [(VStore val store)
+     (VStore (NullV)
+             (Store (update-store (Store-cells store) (find-loc s env) val)
+                    (Store-length store)))]))
 
+(define (update-store [cells : (Listof Cell)] [loc : Integer] [val : Value]) : (Listof Cell)
+  (match cells
+    ['() '()]
+    [(cons (Cell cloc cval) r)
+     (cond
+       [(equal? cloc loc) (cons (Cell loc val) (update-store r loc val))]
+       [else (cons (Cell cloc cval) (update-store r loc val))])]))
+
+(define (find-loc [s : Symbol] [env : Environment]) : Integer
+  (match env
+    ['() (error 'interp "OAZO runtime error in interp-mutate:
+                         tried to mutate binding ~e, but binding ~e doesn't exist" s s)]
+    [(cons (Binding bs bi) r) (cond
+                                [(equal? bs s) bi]
+                                [else (find-loc s r)])]))
 
  
  
@@ -187,7 +212,7 @@
     [(? string? str) (StrC str)]
     [(list 'if test-expr 'then then-expr 'else else-expr)
      (IfC (parse test-expr) (parse then-expr) (parse else-expr))]
-    #;[(list ':= old new) (AppC (IdC ':=) ...)]
+    [(list old ':= new) (AppC (IdC ':=) (list (parse old) (parse new)))]
     [(list 'let bindings ... body) (parse-let (cast bindings (Listof Sexp)) body)]
     [(list 'anon (list params ...) ': body)
      (LamC (parse-params params '()) (parse body))]
@@ -216,7 +241,6 @@
         (error 'find-names "OAZO syntax error in find-names: ~e defined multiple times" name)]
        [else (cons (IdC name) (find-names r-bindings (cons name seen)))])]
     [other (error 'find-names "OAZO syntax error in find-names: expected valid let syntax, got ~e" other)]))
- 
 
 
 ;; find-exprs is given a list of Sexps, bindings, and returns a list of ExprCs
@@ -233,7 +257,7 @@
   (match params
     ['() '()]
     [(cons (? symbol? f) r) #:when
-                            (and (not (argInList? f seen)) (not-reserved? f))
+                            (not-reserved? f)#;(and (not (argInList? f seen)) (not-reserved? f))
                             (cons (IdC f) (parse-params r (cons f seen)))]
     [other (error 'parse-params "OAZO syntax error in parse-params: expected valid parameter syntax, got ~e" other)]))
 
@@ -287,7 +311,7 @@
 ;; fetch is given an Integer (l) and a store, and retrieves the value at location l from the store
 (define (fetch [l : Integer] [store : Store]) : Value
   (match store
-    [(Store '() n) (error 'lookup-binding "OAZO runtime error in lookup: Location ~e not found in store" l)]
+    [(Store '() n) (error 'lookup-binding "OAZO runtime error in fetch: Location ~e not found in store" l)]
     [(Store (cons (Cell location val) r) n) #:when (equal? location l) val]
     [(Store (cons f r) n) (fetch l (Store r n))]))
  
@@ -312,7 +336,6 @@
     [(cons f r) (reverse-list r (cons f output))]))
 
  
- 
 ;; interp-primv is given a symbol corresponding to a primitive function and
 ;; a list of values corresponding to the arguments said function is being called with.
 ;; it then evaluates the primitive operator with the given arguments
@@ -321,7 +344,7 @@
   (define args (VListStore-args vliststore))
   (match args
     [(list arg1) (match op 
-                   ['error (VStore (error 'user-error "OAZO user error: ~e" (serialize (VStore arg1 store))) store)]
+                   ['error (error 'user-error "OAZO user error: ~e" (serialize (VStore arg1 store)))]
                    ['alen (cond
                             [(ArrayV? arg1) (VStore (NumV (ArrayV-length arg1)) store)]
                             [else (call-interp-primv-error2 op)])]
@@ -332,8 +355,8 @@
                                   ['- (VStore (NumV (- n1 n2)) store)]
                                   ['* (VStore (NumV (* n1 n2)) store)]
                                   ['/ (cond
-                                        [(equal? n2 0) (VStore (error 'interp-primv "OAZO runtime error in interp-primv:
-                                                                              tried to divide by 0") store)]
+                                        [(equal? n2 0) (error 'interp-primv "OAZO runtime error in interp-primv:
+                                                                              tried to divide by 0")]
                                         [else (VStore (NumV (/ n1 n2)) store)])]
                                   ['<= (VStore (BoolV (<= n1 n2)) store)]
                                   ['arr (cond
@@ -378,8 +401,7 @@
      (match op
        ['seq (match args
                [(cons f r) (interp-primv op (VListStore r store))])]
-       [other (call-interp-primv-error1 op)])]
-    [other (call-interp-primv-error1 op)]))
+       [other (call-interp-primv-error1 op)])]))
 
 
 ;; mutate-array is given a store (inputStore), a location in that store (loc), and a real number (newval)
@@ -423,12 +445,7 @@
                [(cons f-arg r-args)
                 (match (allocate input-store 1 f-arg)
                   [(IStore base new-store)
-                   (create-appc-bindings r-params r-args (cons s seen) new-store (cons (Binding s base) build-env))])
-                #;(create-appc-bindings r-params r-args (cons s seen) (add2input-store) (add2build-env))
-                #;(cons (Binding s f-arg)
-                      (create-appc-bindings r-params
-                                            r-args
-                                            (cons s seen)))]
+                   (create-appc-bindings r-params r-args (cons s seen) new-store (cons (Binding s base) build-env))])]
                [other (error 'create-appc-bindings "OAZO runtime error in create-appc-bindings:
                                                     too many params")])])]))
 
@@ -515,8 +532,9 @@
                (Cell 14 (BoolV #f))
                (Cell 15 (PrimV 'seq))
                (Cell 16 (PrimV 'error))
-               (Cell 17 (NumV 3)))
-         18))
+               (Cell 17 (PrimV ':=))
+               (Cell 18 (NumV 3)))
+         19))
 (define test-store5
   (Store (list (Cell 0 (PrimV '+))
                (Cell 1 (PrimV '-))
@@ -535,11 +553,12 @@
                (Cell 14 (BoolV #f))
                (Cell 15 (PrimV 'seq))
                (Cell 16 (PrimV 'error))
-               (Cell 17 (NumV 3))
+               (Cell 17 (PrimV ':=))
                (Cell 18 (NumV 3))
                (Cell 19 (NumV 3))
-               (Cell 20 (NumV 3)))
-         21))
+               (Cell 20 (NumV 3))
+               (Cell 21 (NumV 3)))
+         22))
 (define test-store6
   (Store (list (Cell 0 (PrimV '+))
                (Cell 1 (PrimV '-))
@@ -558,12 +577,13 @@
                (Cell 14 (BoolV #f))
                (Cell 15 (PrimV 'seq))
                (Cell 16 (PrimV 'error))
-               (Cell 17 (NumV 9))
+               (Cell 17 (PrimV ':=))
                (Cell 18 (NumV 9))
-               (Cell 19 (NumV 12))
+               (Cell 19 (NumV 9))
                (Cell 20 (NumV 12))
-               (Cell 21 (NumV 12)))
-         22))
+               (Cell 21 (NumV 12))
+               (Cell 22 (NumV 12)))
+         23))
 (define test-store7
   (Store (list (Cell 0 (PrimV '+))
                (Cell 1 (PrimV '-))
@@ -582,10 +602,11 @@
                (Cell 14 (BoolV #f))
                (Cell 15 (PrimV 'seq))
                (Cell 16 (PrimV 'error))
-               (Cell 17 (NumV 9))
-               (Cell 18 (NumV 12))
-               (Cell 19 (NumV 9)))
-         20))
+               (Cell 17 (PrimV ':=))
+               (Cell 18 (NumV 9))
+               (Cell 19 (NumV 12))
+               (Cell 20 (NumV 9)))
+         21))
 
 
 ;; program definitions for tests
@@ -636,6 +657,32 @@
 (define prog21 '{if {<= 3 1} then "one" else "two"})
 (define prog22 '{error "wawaweewa"})
 (define prog23 '{/ 3 0})
+(define prog24 '{f a})
+(define prog25 '{{anon {x y z} : 7} 1 2 3 4})
+(define prog26 '{{anon {x y z} : 7} 1 2})
+(define prog27 '{{anon {x y x} : 7} 1 2 3})
+(define prog28 '{if 1 then 2 else 3})
+(define prog29 '{quote bro ski})
+(define prog30 '{aref {arr 5 1} 10})
+(define prog31 '{alen 7})
+(define prog32 '{str-eq? 7 8})
+(define prog33 '{{anon {a} : {arr-eq? a a}}
+                 {arr 3 1}})
+(define prog34 '{str-eq? 7 "yuh"})
+(define prog35 '{arr-eq? 7 "yuh"})
+(define prog36 '{aref "yuh" "yuh"})
+(define prog37 '{+ "yuh" "yuh"})
+(define prog38 '{error "yuh" "yuh"})
+(define prog39 '{+ 1 2 3 4 5})
+(define prog40 '{+ {arr 2 3} 8 9})
+(define prog41 '{{anon {x} : {seq {x := 3} {+ x 1}}} 7})
+(define prog42 '{{anon {x} : {seq {x := 3 4} {+ x 1}}} 7})
+(define prog43 '{{anon {x} : {seq {x :=} {+ x 1}}} 7})
+(define prog44 '{{anon {x} : {seq {:= x 3} {+ x 1}}} 7})
+(define prog45 '{{anon {x} : {seq {x 3 :=} {+ x 1}}} 7})
+(define prog46 '{{anon {x y z} : {seq {z := 3} {+ z 1}}} 7 8 9})
+(define prog47 '{{anon {x} : {seq {3 := 3} {+ z 1}}} 7})
+(define prog48 '{{anon {x} : {seq {y := 3} {+ z 1}}} 7})
 
 
  
@@ -667,6 +714,9 @@
 (check-equal? (top-interp prog19) "321")
 (check-equal? (top-interp prog20) "null")
 (check-equal? (top-interp prog21) "\"two\"")
+(check-equal? (top-interp prog33) "true")
+(check-equal? (top-interp prog41) "4")
+(check-equal? (top-interp prog46) "4")
 (check-exn #rx"OAZO runtime error in allocate" (lambda () (top-interp '{arr 0 79})))
 (check-exn #rx"OAZO runtime error in allocate" (lambda () (top-interp '{arr -1 79})))
 (check-exn #rx"OAZO runtime error in interp-primv" (lambda () (top-interp prog5)))
@@ -675,14 +725,36 @@
 (check-exn #rx"OAZO runtime error in interp-primv" (lambda () (top-interp prog8)))
 (check-exn #rx"OAZO user error" (lambda () (top-interp prog22)))
 (check-exn #rx"OAZO runtime error in interp-primv" (lambda () (top-interp prog23)))
+(check-exn #rx"OAZO runtime error in lookup" (lambda () (top-interp prog24)))
+(check-exn #rx"OAZO runtime error in create-appc-bindings" (lambda () (top-interp prog25)))
+(check-exn #rx"OAZO runtime error in create-appc-bindings" (lambda () (top-interp prog26)))
+(check-exn #rx"OAZO runtime error in create-appc-bindings" (lambda () (top-interp prog27)))
+(check-exn #rx"OAZO runtime error in interp" (lambda () (top-interp prog28)))
+(check-exn #rx"OAZO syntax error in parse" (lambda () (top-interp prog29)))
+(check-exn #rx"OAZO runtime error in interp" (lambda () (top-interp prog30)))
+(check-exn #rx"OAZO runtime error in interp-primv" (lambda () (top-interp prog31)))
+(check-exn #rx"OAZO runtime error in interp-primv" (lambda () (top-interp prog32)))
+(check-exn #rx"OAZO runtime error in interp-primv" (lambda () (top-interp prog34)))
+(check-exn #rx"OAZO runtime error in interp-primv" (lambda () (top-interp prog35)))
+(check-exn #rx"OAZO runtime error in interp-primv" (lambda () (top-interp prog36)))
+(check-exn #rx"OAZO runtime error in interp-primv" (lambda () (top-interp prog37)))
+(check-exn #rx"OAZO runtime error in interp-primv" (lambda () (top-interp prog38)))
+(check-exn #rx"OAZO runtime error in interp-primv" (lambda () (top-interp prog39)))
+(check-exn #rx"OAZO runtime error in interp-primv" (lambda () (top-interp prog40)))
+(check-exn #rx"OAZO syntax error in not-reserved" (lambda () (top-interp prog42)))
+(check-exn #rx"OAZO syntax error in not-reserved" (lambda () (top-interp prog43)))
+(check-exn #rx"OAZO syntax error in not-reserved" (lambda () (top-interp prog44)))
+(check-exn #rx"OAZO syntax error in not-reserved" (lambda () (top-interp prog45)))
+(check-exn #rx"OAZO runtime error in interp-primv" (lambda () (top-interp prog47)))
+(check-exn #rx"OAZO runtime error in interp-mutate" (lambda () (top-interp prog48)))
 
 
 ;; interp tests
 (check-equal? (interp (NumC 5) top-env top-store) (VStore (NumV 5) top-store))
 (check-equal? (interp (AppC (IdC '+) (list (NumC 2) (NumC 10))) top-env top-store)
               (VStore (NumV 12) top-store))
-(check-equal? (interp (AppC (IdC 'arr) (list (NumC 1) (NumC 3))) top-env top-store) (VStore (ArrayV 17 1) test-store4))
-(check-equal? (interp (AppC (IdC 'arr) (list (NumC 4) (NumC 3))) top-env top-store) (VStore (ArrayV 17 4) test-store5))
+(check-equal? (interp (AppC (IdC 'arr) (list (NumC 1) (NumC 3))) top-env top-store) (VStore (ArrayV 18 1) test-store4))
+(check-equal? (interp (AppC (IdC 'arr) (list (NumC 4) (NumC 3))) top-env top-store) (VStore (ArrayV 18 4) test-store5))
 (check-equal? (interp (AppC (IdC 'arr-eq?)
                             (list (AppC (IdC 'arr)
                                         (list (NumC 2) (NumC 9)))
@@ -737,15 +809,14 @@
 
 ;; interp-primv tests
 (check-equal? (interp-primv '+ (VListStore (list (NumV 7) (NumV 8)) top-store)) (VStore (NumV 15) top-store))
-(check-equal? (interp-primv 'arr (VListStore (list (NumV 1) (NumV 3)) top-store)) (VStore (ArrayV 17 1) test-store4))
+(check-equal? (interp-primv 'arr (VListStore (list (NumV 1) (NumV 3)) top-store)) (VStore (ArrayV 18 1) test-store4))
 (check-exn #rx"OAZO runtime error in interp-primv" (lambda () (interp-primv '+ (VListStore (list (NumV 0) (NumV 1) (NumV 3)) top-store))))
 (check-exn #rx"OAZO runtime error in interp-primv" (lambda () (interp-primv '+ (VListStore (list (NumV 3)) top-store))))
 (check-exn #rx"OAZO runtime error in interp-primv" (lambda () (interp-primv '+ (VListStore '() top-store))))
 
 
-  
-
 ;; lookup and fetch tests
+(check-exn #rx"OAZO runtime error in fetch" (lambda () (fetch 100 top-store)))
 
 
 ;; serialize tests
@@ -755,7 +826,6 @@
 
 
 ;; allocate tests
-
 (check-equal? (allocate test-store1 4 (NumV 3)) (IStore 2 test-store2))
 (check-equal? (allocate (Store '() 0) 3 (StrV "test")) (IStore 0 test-store3))
 (check-exn #rx"OAZO runtime error in allocate" (lambda () (allocate test-store1 0 (NumV 3))))
@@ -839,7 +909,6 @@
 (check-exn #rx"OAZO syntax error in parse:" (lambda () (parse '{})))
 (check-exn #rx"OAZO syntax error in parse-params:" (lambda () (parse '{anon {7 y z} : 4})))
 (check-exn #rx"OAZO syntax error in parse-params:" (lambda () (parse '{anon {{f 5} y z} : 4})))
-(check-exn #rx"OAZO syntax error in parse-params" (lambda () (parse '(anon (x x) : 3))))
 (check-exn #rx"OAZO syntax error in not-reserved?" (lambda () (parse '{if 7 8})))
 (check-exn #rx"OAZO syntax error in not-reserved?" (lambda () (parse '{if {<= 5 10} {+ 2 5} else {+ 2 10}})))
 (check-exn #rx"OAZO syntax error in not-reserved?" (lambda () (parse '{if {<= 5 10} then {+ 2 5} {+ 2 10}})))
@@ -855,8 +924,8 @@
 (check-exn #rx"OAZO syntax error in not-reserved?" (lambda () (parse '(let (: <- "") "World"))))
 
 
-
-
+;; find-names tests
+(check-exn #rx"OAZO syntax error in find-names" (lambda () (find-names (cons 7 '()) '())))
 
 
 
