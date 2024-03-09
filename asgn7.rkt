@@ -3,24 +3,19 @@
 
 ;;;; ---- NOTES ----
 
-;; time to work on type checking
-;; first implement actual Type data types
-;; - bit confused on how they should be implemented
-;; then make the parser for types
-;; afterwards make the type checker 
+;; IfC are type checked - work with top interp
+;; Basic StrC and NumC work  
+;; AppC binops work except for the array-based ones I didnt get to
+;; next is LamC and user defined functions (rest of AppC's)
+;; extend the type environment
+
 
 ;; prog -> |Parse| -> AST -> |TC| -> AST -> |interp| -> value
 
 
 ; We ____ implemented assignment 7
-; Code is organized as follows
-; 1) type definitions
-; 2) top-interp and interp
-; 3) parsing and its helper functions
-; 4) interp's helper functions
-; 5) testing
  
-  
+   
 
 ;;;; ---- TYPE DEFINITIONS ----
 
@@ -102,7 +97,7 @@
 
 
 ;; base-tenv binds base types to their corresponding symbols ... NEEDS DESCRIPTION .......................
-(define base-tenv
+(define top-tenv
   (list (TBinding 'num (NumT))
         (TBinding 'bool (BoolT))
         (TBinding 'str (StrT))
@@ -158,15 +153,18 @@
 
 ;;;; ---- TOP-INTERP and INTERP ----
 
-#;(
+
 
    
 ;; top-interp is given a program in the form of an s-expression and:
 ;; - parses the s-expression into an ExprC representing the AST
 ;; - interprets the AST into a Value representing the result of the program
 ;; - serializes the Value by printing it as a string
-(define (top-interp [s : Sexp]) : String
+#;(define (top-interp [s : Sexp]) : String
   (serialize (interp (parse s) top-env top-store)))
+
+(define (top-interp [s : Sexp]) : String
+  (serialize (interp (type-checker (parse s) top-tenv) top-env top-store)))
   
  
 ;; interp
@@ -185,7 +183,7 @@
                        [other (error 'interp "OAZO runtime error in interp:
                               comparison ~e returned non-boolean value of ~e"
                                      test-expr other)])])] 
-    [(LamC params body)
+    #;[(LamC params body)
      (VStore (CloV params body env) store)]   
     [(AppC func args) 
      (match (interp func env store)
@@ -203,9 +201,9 @@
                       (extend-env clov-env
                                   estore-env)
                       estore-store)])])])]))
-)
- 
- 
+
+   
+  
 ;;;; ---- PARSING ----
 
 
@@ -233,8 +231,29 @@
     [other (error 'parse "OAZO syntax error in parse: expected valid syntax, got ~e" s)]))
 
 
+;; type-checker
+;; - given Abstract Syntax, checks for type errors
+;; - if no type errors, returns the ExprC stripped of its type annotations
+(define (type-checker [exp : ExprC] [tenv : TEnvironment]) : ExprC
+  (define exp-type (type-check exp tenv)) ; type checking is done here
+  (match exp 
+    [(NumC n) (cond
+                [(equal? (NumT) exp-type) exp]
+                [else (error 'parse "OAZO type error in type-checker: expected valid types, got ~e" exp-type)])]
+    ; i have no idea what to do about IdC's
+    #;[(IdC s) (cond
+                [(equal? (VoidT) exp-type) exp]
+                [else (error 'parse "OAZO type error in type-checker: expected valid types, got ~e" exp-type)])]
+    [(StrC s) (cond
+                [(equal? (StrT) exp-type) exp]
+                [else (error 'parse "OAZO type error in type-checker: expected valid types, got ~e" exp-type)])]
+    [(IfC test-expr then-expr else-expr) exp]
+    #;[(LamC params body) ... (code to strip any annotations .. we already type checked above) ...]   
+    [(AppC func args) #; (code to strip any annotations .. we already type checked above) exp]))
+ 
+
 ;; parse-type
-;; - given an expression to determine its type
+;; - determines the type associated with the given symbol
 (define (parse-type [s : Sexp]) : Type
   (match s
     ['num (NumT)]
@@ -246,16 +265,80 @@
                                                 (cast inTypes (Listof Sexp)))
                                            (parse-type outType))]))
 
-(check-equal? (parse-type '{num bool numarray -> void}) (UserT (list (NumT) (BoolT) (ArrayT)) (VoidT)))
-(check-equal? (parse-type '{{num num -> num} num -> num}) (UserT (list (UserT (list (NumT) (NumT)) (NumT)) (NumT)) (NumT)))
-(check-equal? (parse-type '{-> num}) (UserT '() (NumT)))
-
-
+ 
 ;; type-check
-;; - given Abstract Syntax
-;; - checks for type errors
-(define (type-check [exp : ExprC] [env : Environment]) : Type
-  (NumT))
+;; - returns the type of an ExprC
+(define (type-check [exp : ExprC] [tenv : TEnvironment]) : Type
+  (match exp
+    [(NumC n) (NumT)]
+    [(StrC str) (StrT)]
+    [(list (IdC s) arg1 ...) (UserT)]
+    ; not really sure what to do about variables tbh - since the type is implied
+    ; - like for '+, the type should be enforced in that case not here
+    ; I was thinking of fetching and lookup them up but thats not possible since theyre not in store/environment yet
+    #;[(IdC id) (fetch (lookup id top-env))]
+    [(IfC test-expr then-expr else-expr)
+     (define then-type (type-check then-expr tenv))
+     (define else-type (type-check else-expr tenv))
+     (cond
+       [(equal? then-type else-type) then-type]
+       [else (error 'type-check "OAZO type error in type-check: non-matching types given to if")])]
+    #;[(ParamC ...) ...]
+    [(AppC func args)
+     (match args
+       [(list arg1 arg2) (type-check-binop func arg1 arg2 tenv)]
+       #;[other ...])]
+    #;[(LamC ...) ...]))
+
+
+;; type-check-binop will return the type of a binary operation application
+(define (type-check-binop [func : ExprC] [arg1 : ExprC] [arg2 : ExprC] [tenv : TEnvironment]) : Type
+  (define arg1-type (type-check arg1 tenv))
+  (define arg2-type (type-check arg1 tenv))
+  (match func
+    [(IdC '+)
+     (cond
+       [(and (equal? arg1-type (NumT)) (equal? arg2-type (NumT))) (NumT)]
+       [else (error 'type-check "OAZO type error in type-check: incorrect types given to operator")])]
+    [(IdC '-)
+     (cond
+       [(and (equal? arg1-type (NumT)) (equal? arg2-type (NumT))) (NumT)]
+       [else (error 'type-check "OAZO type error in type-check: incorrect types given to operator")])]
+    [(IdC '*)
+     (cond
+       [(and (equal? arg1-type (NumT)) (equal? arg2-type (NumT))) (NumT)]
+       [else (error 'type-check "OAZO type error in type-check: incorrect types given to operator")])]
+    [(IdC '/)
+     (cond
+       [(and (equal? arg1-type (NumT)) (equal? arg2-type (NumT))) (NumT)]
+       [else (error 'type-check "OAZO type error in type-check: incorrect types given to operator")])]
+    [(IdC 'num-eq?)
+     (cond
+       [(and (equal? arg1-type (NumT)) (equal? arg2-type (NumT))) (NumT)]
+       [else (error 'type-check "OAZO type error in type-check: incorrect types given to operator")])]
+    [(IdC 'str-eq?)
+     (cond
+       [(and (equal? arg1-type (StrT)) (equal? arg2-type (StrT))) (StrT)]
+       [else (error 'type-check "OAZO type error in type-check: incorrect types given to operator")])]
+    [(IdC '<=)
+     (cond
+       [(and (equal? arg1-type (NumT)) (equal? arg2-type (NumT))) (NumT)]
+       [else (error 'type-check "OAZO type error in type-check: incorrect types given to operator")])]
+    #;[(IdC 'substring) ...]
+    #;[(IdC 'arr) ...]
+    #;[(IdC 'aref) ...]
+    #;[(IdC 'aset) ...]
+    #;[(IdC 'alen) ...])) 
+ 
+
+ 
+;; lookup-type is given a type and an type environment, and looks for that type in the type environment
+(define (lookup-type [s : Symbol] [tenv : TEnvironment]) : Type
+  (cond 
+    [(null? tenv) (error 'lookup-type "OAZO runtime error in lookup-type: Type ~e not found in TEnvironment" s)]
+    [else (match (first tenv)
+            [(TBinding symb ty) #:when (equal? symb s) ty]
+            [other (lookup-type s (rest tenv))])]))
 
 
 ;; parse-let takes a list of Sexps and a body and turns it into an ExprC
@@ -316,7 +399,8 @@
   
  
 ;;;; ---- INTERPRETING
-#;(
+
+
 
 ;; serialize
 ;; - should accept any OAZO7 value, and return a string
@@ -396,7 +480,8 @@
                                   ['arr (cond
                                           [(integer? n1)
                                            (match (allocate store n1 (NumV n2))
-                                             [(IStore base new-store) (VStore (ArrayV base (cast n1 Integer)) new-store)])]
+                                             [(IStore base new-store) (VStore (ArrayV base (cast n1 Integer))
+                                                                              new-store)])]
                                           [else (call-interp-primv-error2 op)])]
                                   ['num-eq? (VStore (BoolV (equal? n1 n2)) store)]
                                   ['seq (VStore (NumV n2) store)]
@@ -465,7 +550,8 @@
 
 ;; create-appc-bindings is given a list of IdC's, params, a list of Value's, args, and an empty list, seen
 ;; and creates a list of bindings, each binding corresponding to a name in params and a value in args.
-(define (create-appc-bindings [params : (Listof IdC)] [args : (Listof Value)] [seen : (Listof Symbol)] [input-store : Store] [build-env : Environment]) : EStore
+(define (create-appc-bindings [params : (Listof IdC)] [args : (Listof Value)] [seen : (Listof Symbol)]
+                              [input-store : Store] [build-env : Environment]) : EStore
   (match params
     ['() (match args
            ['() (EStore (cast (reverse-list build-env '()) Environment) input-store)]
@@ -483,7 +569,7 @@
                [other (error 'create-appc-bindings "OAZO runtime error in create-appc-bindings:
                                                     too many params")])])]))
  
-)
+
 
    
 ;; argInList? takes any one element, and a list of elements,
@@ -495,7 +581,7 @@
                   [(equal? f arg) #t]
                   [else (argInList? arg r)])]))
 
-#;(
+
 ;; extend-env takes a starting environment, start and a list of bindings, new
 ;; and adds all of the bindings of new to the start environment
 (define (extend-env [start : Environment] [new : Environment]) : Environment
@@ -516,14 +602,14 @@
 
 
 ;; allocate-helper recursively creates new cells in the store
-(define (allocate-helper [start-cells : (Listof Cell)] [num : Integer] [val : Value] [next-loc : Integer]) : (Listof Cell)
+(define (allocate-helper [start-cells : (Listof Cell)] [num : Integer] [val : Value] [next-loc : Integer]):(Listof Cell)
   (match start-cells
     ['() (cond
            [(equal? num 0) '()]
            [else (cons (Cell next-loc val) (allocate-helper '() (- num 1) val (+ next-loc 1)))])]
     [(cons f r) (cons f (allocate-helper r num val next-loc))]))
 
-;; needs description
+;; interp-mutate mutates a store
 (define (interp-mutate [s : Symbol] [env : Environment] [vstore : VStore]) : VStore
   (match vstore
     [(VStore val store)
@@ -531,7 +617,7 @@
              (Store (update-store (Store-cells store) (find-loc s env) val)
                     (Store-length store)))]))
 
-;; needs description
+;; update-store returns a new store with additional cells
 (define (update-store [cells : (Listof Cell)] [loc : Integer] [val : Value]) : (Listof Cell)
   (match cells
     ['() '()]
@@ -540,7 +626,7 @@
        [(equal? cloc loc) (cons (Cell loc val) (update-store r loc val))]
        [else (cons (Cell cloc cval) (update-store r loc val))])]))
 
-;; needs description
+;; find-loc returns the location of a given symbol in an environment
 (define (find-loc [s : Symbol] [env : Environment]) : Integer
   (match env
     ['() (error 'interp "OAZO runtime error in interp-mutate:
@@ -548,9 +634,9 @@
     [(cons (Binding bs bi) r) (cond
                                 [(equal? bs s) bi]
                                 [else (find-loc s r)])]))
-)
 
 
+ 
 
 ;;;; ---- Testing ----
 
@@ -669,7 +755,7 @@
                (Cell 19 (NumV 12))
                (Cell 20 (NumV 9)))
          21))
-
+ 
 
 ;; program definitions for tests
 (define prog1 '{alen {arr 3 7}})
@@ -872,7 +958,8 @@
 ;; interp-primv tests
 (check-equal? (interp-primv '+ (VListStore (list (NumV 7) (NumV 8)) top-store)) (VStore (NumV 15) top-store))
 (check-equal? (interp-primv 'arr (VListStore (list (NumV 1) (NumV 3)) top-store)) (VStore (ArrayV 18 1) test-store4))
-(check-exn #rx"OAZO runtime error in interp-primv" (lambda () (interp-primv '+ (VListStore (list (NumV 0) (NumV 1) (NumV 3)) top-store))))
+(check-exn #rx"OAZO runtime error in interp-primv" (lambda () (interp-primv '+ (VListStore (list (NumV 0) (NumV 1)
+                                                                                                 (NumV 3)) top-store))))
 (check-exn #rx"OAZO runtime error in interp-primv" (lambda () (interp-primv '+ (VListStore (list (NumV 3)) top-store))))
 (check-exn #rx"OAZO runtime error in interp-primv" (lambda () (interp-primv '+ (VListStore '() top-store))))
 
@@ -895,6 +982,41 @@
 
 ;; create-appc-bindings tests
 )
+ 
+
+;; misc test for implementing type checking
+(check-equal? (interp (type-checker (NumC 12) top-tenv) top-env top-store) (VStore (NumV 12) top-store))
+(check-equal? (serialize (interp (type-checker (NumC 12) top-tenv) top-env top-store)) "12")
+(check-equal? (interp (type-checker (IfC (IdC 'true) (NumC 1) (NumC 2)) top-tenv) top-env top-store)
+              (VStore (NumV 1) top-store))
+(check-equal? (serialize (interp (type-checker (IfC (IdC 'true) (NumC 1) (NumC 2)) top-tenv) top-env top-store)) "1")
+(check-equal? (top-interp '{if true then 1 else 2}) "1")
+(check-equal? (top-interp '{if {<= 2 2} then 1 else 2}) "1")
+(check-equal? (top-interp '{+ 2 1}) "3")
+
+(check-exn #rx"OAZO type error in type-check" (lambda () (top-interp '{if true then "Bob" else 2}))) 
+ 
+
+;; type-checker tests
+(check-equal? (type-checker (NumC 12) top-tenv) (NumC 12))
+
+
+;; type-check tests
+(check-equal? (type-check (StrC "hello") top-tenv) (StrT))
+
+
+;; lookup-type tests
+(check-equal? (lookup-type 'num top-tenv) (NumT))
+(check-equal? (lookup-type 'bool top-tenv) (BoolT))
+
+
+;; parse-type tests
+(check-equal? (parse-type '{num bool numarray -> void}) (UserT (list (NumT) (BoolT) (ArrayT)) (VoidT)))
+(check-equal? (parse-type '{{num num -> num} num -> num})
+              (UserT (list (UserT (list (NumT) (NumT)) (NumT)) (NumT)) (NumT)))
+(check-equal? (parse-type '{-> num}) (UserT '() (NumT)))
+
+
 
 
 ;; parse tests
@@ -991,6 +1113,7 @@
 
 ;; find-names tests
 (check-exn #rx"OAZO syntax error in find-names" (lambda () (find-names (cons 7 '()) '())))
+
 
 
 
